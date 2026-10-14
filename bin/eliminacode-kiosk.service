@@ -19,6 +19,9 @@ StandardError=journal
 UtmpIdentifier=tty1
 UtmpMode=user
 Environment=XDG_SESSION_TYPE=wayland
+# The monitor key is read as root ("+"): the user "monitor" cannot read config/database.php.
+RuntimeDirectory=eliminacode-kiosk
+ExecStartPre=+/bin/sh /var/www/html/eliminacode/bin/monitor-kiosk-key.sh
 ExecStart=/usr/bin/cage -d -s -- /bin/sh /var/www/html/eliminacode/bin/monitor-kiosk.sh
 Restart=always
 RestartSec=3

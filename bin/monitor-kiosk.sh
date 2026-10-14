@@ -17,7 +17,8 @@ CARD=$(pactl list short cards 2>/dev/null | awk 'NR==1 {print $2}')
 i=0
 until curl -fs -o /dev/null http://localhost/login.php || [ $i -ge 60 ]; do i=$((i + 1)); sleep 2; done
 
-KEY=$(cd "$APP" && php -r 'require "includes/functions.php"; require_once "includes/queue.php"; echo queueSettings()["key"];' 2>/dev/null)
+# Monitor key, written by the service's ExecStartPre (as root: this user cannot read the DB settings).
+KEY=$(cat /run/eliminacode-kiosk/key 2>/dev/null)
 
 # Chrome left "crashed" after a power cut: no restore bubble.
 PREFS="$HOME/.kiosk/Default/Preferences"
