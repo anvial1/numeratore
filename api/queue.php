@@ -49,7 +49,8 @@ try {
                 'video'    => (string) ($s['video_path'] ?? ''),
                 'audio'    => (bool) ($s['video_audio'] ?? false) || ($s['stream_type'] ?? '') === 'radio',
                 'live'     => $s['stream_url'] ? (string) $s['stream_type'] : '',
-                'stream'   => (string) ($s['stream_url'] ?? ''),
+                // A camera's address holds its password: the monitor gets only the go2rtc stream name.
+                'stream'   => $s['stream_type'] === 'camera' ? '/go2rtc/api/ws?src=' . queueCameraName($s['id']) : (string) ($s['stream_url'] ?? ''),
                 'logo'     => (string) ($s['stream_logo'] ?? ''),
                 'live_secs' => (int) ($s['stream_seconds'] ?? 60),
                 'bg'       => ($s['stream_type'] ?? '') === 'radio' && !empty($s['stream_background']),

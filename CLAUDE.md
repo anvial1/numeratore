@@ -13,6 +13,12 @@ at the user's request. Integrating it into other projects is a later decision of
 - `bin/udp-listener.php` — the same commands over UDP (port 9999, `<op_key> next 1`, or JSON), run by the
   systemd unit `bin/eliminacode-udp.service`. Installed only on the LAN server 192.168.1.63, not on
   production. After changing the listener: `systemctl restart eliminacode-udp` there.
+- IP camera tiles (`stream_type` = 'camera', LAN server only): go2rtc 1.9.9 (`eliminacode-go2rtc` service, user
+  www-data, API on 127.0.0.1:1984, config `bin/go2rtc.yaml`) turns RTSP / ONVIF into MSE. The camera URL (with
+  password) stays in the DB; the monitor gets only `/go2rtc/api/ws?src=c<16 hex>` (`queueCameraName()`), and Apache
+  (`bin/apache-go2rtc.conf`) proxies only `video-rtc.js` and that websocket. `bin/cameras-sync.php` loads the tiles
+  into go2rtc at its start; the admin re-syncs after every save. `admin/cameras.php` = ONVIF search / profiles /
+  preview. Set up with `bin/install-go2rtc.sh`. The "Telecamera" kind shows only where go2rtc answers.
 - TV on the LAN server's own video output (HP EliteDesk mini, DisplayPort/HDMI): `bin/eliminacode-kiosk.service`
   runs `bin/monitor-kiosk.sh` (Chrome .deb `--kiosk` inside `cage`, user `monitor`, tty1, sound via pipewire)
   on http://localhost/queue/monitor.php. Waits until a screen is plugged in. Set up once with

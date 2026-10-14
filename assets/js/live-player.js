@@ -32,7 +32,56 @@
         return m ? 'channel:' + m[1] : null;
     }
 
+    /**
+     * IP camera through go2rtc on the server (LAN only): its own player (MSE over a websocket),
+     * proxied by Apache at /go2rtc/. url = "/go2rtc/api/ws?src=<name>".
+     */
+    let camLoading = null;
+    function loadCamera() {
+        return camLoading || (camLoading = import('/go2rtc/video-rtc.js').then(m => {
+            if (!customElements.get('video-camera')) {
+                customElements.define('video-camera', class extends m.VideoRTC {
+                    constructor() {
+                        super();
+                        this.mode = 'mse';          // no WebRTC ports to open: MSE over the websocket
+                        this.media = 'video';       // cameras: picture only
+                        this.visibilityCheck = false;
+                    }
+                    oninit() {
+                        super.oninit();
+                        this.video.controls = false;
+                        this.video.muted = true;
+                        this.video.style.objectFit = 'contain';
+                        this.video.style.background = '#000';
+                    }
+                });
+            }
+        }).catch(e => { camLoading = null; throw e; }));
+    }
+    function playCamera(box, url, opt) {
+        let dead = false, el = null;
+        const failTimer = setTimeout(() => fail('timeout'), opt.timeout || 20000);
+        const stop = () => {
+            if (dead) return;
+            dead = true;
+            clearTimeout(failTimer);
+            if (el) { try { el.ondisconnect(); } catch (e) {} el.remove(); }
+        };
+        const fail = why => { if (dead) return; stop(); if (opt.onFail) opt.onFail(why); };
+        loadCamera().then(() => {
+            if (dead) return;
+            el = document.createElement('video-camera');
+            el.className = 'live';
+            el.style.display = 'block';
+            box.appendChild(el);
+            el.video.addEventListener('playing', () => clearTimeout(failTimer));
+            el.src = url;
+        }, () => fail('go2rtc'));
+        return { stop, mute() {} };
+    }
+
     window.livePlay = function (box, url, opt = {}) {
+        if (opt.camera) return playCamera(box, url, opt);
         let dead = false, hls = null, failTimer = null, el;
         const stop = () => {
             if (dead) return;

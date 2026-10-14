@@ -54,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $old->execute([(int) $_POST['id']]);
         queueDeleteUpload($old->fetchColumn() ?: null);
         $pdo->prepare("DELETE FROM queue_slides WHERE id = ?")->execute([(int) $_POST['id']]);
+        if (queueCamerasAvailable()) queueCamerasSync();
         $back('Riquadro eliminato.', 'slides');
     }
 
@@ -66,9 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $cur = $st->fetch() ?: $cur;
         }
         // Tile type: photo, uploaded video, live TV channel or radio station.
-        $kind   = in_array($_POST['kind'] ?? '', ['photo', 'video', 'tv', 'radio'], true) ? $_POST['kind'] : 'photo';
-        $live   = $kind === 'tv' || $kind === 'radio';
-        $stream = $live ? queueStreamUrl($_POST['stream_url'] ?? '') : null;
+        $kind   = in_array($_POST['kind'] ?? '', ['photo', 'video', 'tv', 'radio', 'camera'], true) ? $_POST['kind'] : 'photo';
+        $live   = in_array($kind, ['tv', 'radio', 'camera'], true);
+        $stream = $kind === 'camera' ? queueCameraUrl($_POST['camera_url'] ?? '') : ($live ? queueStreamUrl($_POST['stream_url'] ?? '') : null);
+        if ($kind === 'camera' && !$stream) $back('Scegli una telecamera (Cerca telecamere) oppure scrivi il suo indirizzo rtsp:// o onvif://.', 'slides');
         if ($live && !$stream) $back('Scegli un canale dall\'elenco oppure scrivi l\'indirizzo dello streaming (http:// o https://).', 'slides');
         $title = mb_substr(trim((string) ($_POST['title'] ?? '')), 0, 120);
         $img = queueSaveImage('image');
@@ -90,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sort  = (int) ($_POST['sort_order'] ?? 0);
         $act   = isset($_POST['active']) ? 1 : 0;
         $audio = isset($_POST['video_audio']) ? 1 : 0;
-        $logo  = $live ? queueStreamUrl($_POST['stream_logo'] ?? '') : null;
+        $logo  = $live && $kind !== 'camera' ? queueStreamUrl($_POST['stream_logo'] ?? '') : null;
         $secs  = max(10, min(3600, (int) ($_POST['stream_seconds'] ?? 60)));
         $bg    = $kind === 'radio' && ($_POST['radio_mode'] ?? '') === 'bg' ? 1 : 0;
         $cols  = [$title, $sub, $price, $image, $video, $audio, $live ? $kind : null, $stream, $logo, $secs, $bg, $sort, $act];
@@ -105,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         // Only one background radio at a time.
         if ($bg && $act) $pdo->prepare("UPDATE queue_slides SET stream_background = 0 WHERE id <> ? AND stream_background = 1")->execute([$id]);
+        if (queueCamerasAvailable()) queueCamerasSync();
         $back($vid ? 'Video caricato: il monitor lo scarica e lo mostra entro 5 minuti.'
             : ($bg ? 'Radio di sottofondo salvata: il monitor la fa suonare mentre scorrono le foto, entro 5 minuti.'
             : ($live ? 'Riquadro salvato: il monitor lo mostra entro 5 minuti.' : 'Riquadro salvato.')), 'slides');
@@ -202,7 +205,14 @@ include __DIR__ . '/../includes/header.php';
 .qa-kind { border:1px solid var(--border, #ddd); border-radius:8px; padding:6px 12px; cursor:pointer; }
 .qa-kind:has(input:checked) { border-color:var(--primary, #0284c7); background:rgba(2,132,199,.08); font-weight:600; }
 .qa-upload .kf { display:none; }
-.qa-upload[data-kind=photo] .kf.photo, .qa-upload[data-kind=video] .kf.video, .qa-upload[data-kind=tv] .kf.tv, .qa-upload[data-kind=radio] .kf.radio { display:revert; }
+.qa-upload[data-kind=photo] .kf.photo, .qa-upload[data-kind=video] .kf.video, .qa-upload[data-kind=tv] .kf.tv, .qa-upload[data-kind=radio] .kf.radio, .qa-upload[data-kind=camera] .kf.camera { display:revert; }
+.qa-upload[data-kind=camera] .qa-chan-row { display:none; }
+.qa-cam-list { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+.qa-cam-list:empty { display:none; }
+.qa-cam-list button { border:1px solid var(--border-color, #ddd); background:#fff; color:var(--text-primary, #0c3b56); border-radius:8px; padding:6px 10px; cursor:pointer; font:inherit; font-size:.85rem; }
+.qa-cam-list button:hover { background:#e6f3fb; }
+.qa-cam-list button.sel { background:var(--primary, #0284c7); color:#fff; }
+.qa-cam-list .qa-cam-dev { flex-basis:100%; font-size:.8rem; color:var(--text-secondary); margin-top:4px; }
 .qa-live { border-left:3px solid var(--primary, #0284c7); padding-left:12px; margin-bottom:8px; }
 .qa-chan-info { font-size:.8rem; color:var(--text-secondary); }
 .qa-radio-mode { display:flex; gap:8px; flex-wrap:wrap; margin:4px 0 10px; }.qa-upload[data-kind=radio]:has(input[name=radio_mode][value=bg]:checked) .qa-secs { display:none; }
@@ -217,6 +227,7 @@ include __DIR__ . '/../includes/header.php';
 .qa-chan-list button.blocked { color:#94a3b8; }
 .qa-chan-list button.blocked img { opacity:.4; }
 .qa-preview video, .qa-preview iframe { display:block; width:100%; max-width:480px; aspect-ratio:16/9; background:#000; border:0; border-radius:8px; margin-bottom:8px; }
+.qa-preview video-camera { display:block; width:100%; max-width:480px; aspect-ratio:16/9; background:#000; border-radius:8px; overflow:hidden; margin-bottom:8px; }
 .qa-preview audio { display:block; width:100%; max-width:480px; margin-bottom:8px; }
 .qa-thumb.qa-logo { object-fit:contain; background:#fff; }
 </style>
@@ -348,6 +359,8 @@ include __DIR__ . '/../includes/header.php';
 $slideFields = static function (?array $s) use ($v, $slides): void {
     $kind = $s ? ($s['stream_type'] ?: ($s['video_path'] ? 'video' : 'photo')) : 'photo';
     $kinds = ['photo' => ['fa-image', 'Foto'], 'video' => ['fa-film', 'Video'], 'tv' => ['fa-tv', 'TV in diretta'], 'radio' => ['fa-radio', 'Radio']];
+    // IP cameras only where go2rtc runs (the LAN server).
+    if (queueCamerasAvailable() || $kind === 'camera') $kinds['camera'] = ['fa-video', 'Telecamera'];
     ?>
     <div class="qa-kinds">
         <?php foreach ($kinds as $k => [$icon, $label]): ?>
@@ -359,8 +372,21 @@ $slideFields = static function (?array $s) use ($v, $slides): void {
         <div class="form-group"><label class="form-label">Prezzo / etichetta</label><input type="text" name="price" maxlength="40" class="form-control" value="<?= $v($s['price'] ?? '') ?>" placeholder="€ 3,50 o NOVITÀ"></div>
     </div>
     <div class="form-group"><label class="form-label">Descrizione</label><input type="text" name="subtitle" maxlength="255" class="form-control" value="<?= $v($s['subtitle'] ?? '') ?>"></div>
-    <div class="kf tv radio qa-live">
-        <div class="form-row">
+    <div class="kf tv radio camera qa-live">
+        <div class="kf camera">
+            <div class="form-row" style="align-items:flex-end">
+                <div class="form-group"><label class="form-label">Utente della telecamera</label><input type="text" class="form-control qa-cam-user" value="admin" autocomplete="off"></div>
+                <div class="form-group"><label class="form-label">Password della telecamera</label><input type="password" class="form-control qa-cam-pass" autocomplete="new-password"></div>
+                <div class="form-group"><button type="button" class="btn btn-outline qa-cam-find"><i class="fas fa-magnifying-glass"></i> Cerca telecamere</button></div>
+            </div>
+            <div class="qa-cam-list"></div>
+            <small class="qa-chan-info qa-cam-info">Scrivi utente e password, premi "Cerca telecamere", poi tocca la telecamera e la qualità. Meglio lo stream secondario (più leggero) e in H.264.</small>
+            <div class="form-group mt-md">
+                <label class="form-label">Indirizzo della telecamera (rtsp:// o onvif://, resta sul server)</label>
+                <input type="text" name="camera_url" maxlength="500" class="form-control" value="<?= $v(($s['stream_type'] ?? '') === 'camera' ? $s['stream_url'] : '') ?>" placeholder="rtsp://admin:password@192.168.1.101:554/cam/realmonitor?channel=1&amp;subtype=1" autocomplete="off">
+            </div>
+        </div>
+        <div class="form-row qa-chan-row">
             <div class="form-group">
                 <label class="form-label"><span class="kf tv">Canale TV</span><span class="kf radio">Stazione radio</span>: scegli dall'elenco (scrivi per filtrare)</label>
                 <input type="search" class="form-control qa-chan" autocomplete="off" placeholder="Cerca: LA7, Rai News 24, Radio Italia…">
@@ -409,8 +435,9 @@ $slideFields = static function (?array $s) use ($v, $slides): void {
             <li><strong>Video</strong>: MP4 H.264 o WebM orizzontale, massimo <?= QUEUE_VIDEO_MAX_MB ?> MB. Il monitor lo scarica per intero e lo riproduce fino alla fine.</li>
             <li><strong>TV in diretta</strong>: scegli un canale dall'elenco dei canali italiani online, oppure incolla l'indirizzo di uno streaming (.m3u8) o un link YouTube di una diretta.</li>
             <li><strong>Radio</strong>: scegli una stazione dall'elenco delle radio italiane o incolla l'indirizzo dello streaming. Come <strong>musica di sottofondo</strong> suona sempre mentre scorrono le foto (si abbassa da sola durante le chiamate e sui video o TV con audio); come <strong>riquadro a sé</strong> sul monitor si vede il logo con la scritta "In onda".</li>
+            <?php if (queueCamerasAvailable()): ?><li><strong>Telecamera</strong>: una telecamera IP della rete (ONVIF / RTSP). Scrivi utente e password, premi "Cerca telecamere" e scegli la qualità; meglio lo stream secondario in H.264. Funziona sui monitor aperti nella rete locale.</li><?php endif; ?>
         </ul>
-        <p class="qa-note">TV e radio restano sul monitor per i secondi che scegli, poi si passa al riquadro successivo; se c'è un solo riquadro restano sempre. Il loro audio si abbassa da solo quando viene chiamato un numero.
+        <p class="qa-note">TV, radio e telecamere restano sul monitor per i secondi che scegli, poi si passa al riquadro successivo; se c'è un solo riquadro restano sempre. Il loro audio si abbassa da solo quando viene chiamato un numero.
             Gli elenchi vengono da fonti pubbliche e alcuni canali possono essere spenti o non funzionare nel browser: premi <strong>Prova</strong> prima di salvare. Se un canale non parte, il monitor passa al riquadro successivo.
             <?php if ($https): ?><br><strong>Questo sito è in https</strong>: i canali con indirizzo <code>http://</code> vengono bloccati dal browser, usa quelli <code>https://</code>.<?php endif; ?></p>
         <?php foreach ($slides as $s): $kind = $s['stream_type'] ?: ($s['video_path'] ? 'video' : 'photo'); ?>
@@ -421,7 +448,7 @@ $slideFields = static function (?array $s) use ($v, $slides): void {
                         <video class="qa-thumb" src="<?= $v($s['video_path']) ?>#t=1" muted preload="metadata" playsinline></video>
                     <?php elseif ($s['image_path'] || $s['stream_logo']): ?><img class="qa-thumb<?= $s['image_path'] ? '' : ' qa-logo' ?>" src="<?= $v($s['image_path'] ?: $s['stream_logo']) ?>" alt="">
                     <?php else: ?><span class="qa-thumb"></span><?php endif; ?>
-                    <span class="qa-badge"><?php if ($kind === 'radio' && $s['stream_background']): ?><i class="fas fa-music"></i> Radio di sottofondo<?php else: ?><i class="fas <?= ['photo' => 'fa-image', 'video' => 'fa-film', 'tv' => 'fa-tv', 'radio' => 'fa-radio'][$kind] ?>"></i> <?= ['photo' => 'Foto', 'video' => 'Video', 'tv' => 'TV in diretta', 'radio' => 'Radio'][$kind] ?><?php endif; ?></span>
+                    <span class="qa-badge"><?php if ($kind === 'radio' && $s['stream_background']): ?><i class="fas fa-music"></i> Radio di sottofondo<?php else: ?><i class="fas <?= ['photo' => 'fa-image', 'video' => 'fa-film', 'tv' => 'fa-tv', 'radio' => 'fa-radio', 'camera' => 'fa-video'][$kind] ?>"></i> <?= ['photo' => 'Foto', 'video' => 'Video', 'tv' => 'TV in diretta', 'radio' => 'Radio', 'camera' => 'Telecamera'][$kind] ?><?php endif; ?></span>
                 </div>
                 <div>
                     <?php $slideFields($s); ?>
@@ -456,6 +483,7 @@ function qaLoadList(type) {
         return qaLists[type];
     }).catch(() => { delete qaLoading[type]; return []; }));
 }
+const qaCamPost = data => fetch('/admin/cameras.php', { method: 'POST', body: new URLSearchParams(data) }).then(r => r.json());
 // The visible channel list under the search box (a datalist stays hidden in Firefox until you type).
 const qaFold = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 function qaRenderList(form) {
@@ -545,22 +573,64 @@ document.querySelectorAll('form.qa-upload').forEach(form => {
     form.querySelector('.qa-try').addEventListener('click', () => {
         if (form._preview) return qaStopPreview(form);
         const box = form.querySelector('.qa-preview'), btn = form.querySelector('.qa-try');
-        if (!url.value.trim()) { box.innerHTML = '<p class="qa-note">Scegli prima un canale o scrivi l\'indirizzo.</p>'; return; }
-        box.innerHTML = '<p class="qa-note qa-wait">Avvio del canale…</p>';
+        const cam = form.dataset.kind === 'camera', camUrl = form.querySelector('input[name=camera_url]').value.trim();
+        if (!(cam ? camUrl : url.value.trim())) { box.innerHTML = '<p class="qa-note">Scegli prima ' + (cam ? 'una telecamera' : 'un canale') + ' o scrivi l\'indirizzo.</p>'; return; }
+        box.innerHTML = '<p class="qa-note qa-wait">' + (cam ? 'Collegamento alla telecamera…' : 'Avvio del canale…') + '</p>';
         btn.innerHTML = '<i class="fas fa-stop"></i> Ferma';
-        form._preview = livePlay(box, url.value.trim(), {
-            radio: form.dataset.kind === 'radio', controls: true, timeout: 20000,
-            onFail: why => {
-                form._preview = null;
-                btn.innerHTML = '<i class="fas fa-play"></i> Prova';
-                box.innerHTML = '<p class="qa-note" style="color:var(--danger)"><i class="fas fa-triangle-exclamation"></i> ' + (why === 'mixed'
-                    ? 'Questo canale è http:// e il sito è https://: il browser lo blocca. Scegli un canale https://.'
-                    : 'Il canale non parte (' + qaEsc(why) + '): potrebbe essere spento o non visibile da browser. Prova un altro canale.') + '</p>';
-            },
-        });
-        const media = box.querySelector('video,audio,iframe');
-        if (media) media.addEventListener('playing', () => { const w = box.querySelector('.qa-wait'); if (w) w.remove(); });
-        if (media && media.tagName === 'IFRAME') { const w = box.querySelector('.qa-wait'); if (w) w.remove(); }
+        const holder = form._preview = { stop() { this.dead = true; if (this.p) this.p.stop(); } };
+        const onFail = why => {
+            if (holder.dead) return;
+            form._preview = null;
+            btn.innerHTML = '<i class="fas fa-play"></i> Prova';
+            box.innerHTML = '<p class="qa-note" style="color:var(--danger)"><i class="fas fa-triangle-exclamation"></i> ' + (why === 'mixed'
+                ? 'Questo canale è http:// e il sito è https://: il browser lo blocca. Scegli un canale https://.'
+                : cam ? 'La telecamera non si vede (' + qaEsc(why) + '): controlla indirizzo, utente e password. Se è in H.265 impostala in H.264 o usa lo stream secondario.'
+                : 'Il canale non parte (' + qaEsc(why) + '): potrebbe essere spento o non visibile da browser. Prova un altro canale.') + '</p>';
+        };
+        // A camera is played through go2rtc on the server: register a temporary preview stream first.
+        const src = cam ? qaCamPost({ action: 'preview', url: camUrl }).then(j => j.stream) : Promise.resolve(url.value.trim());
+        src.then(stream => {
+            if (holder.dead) return;
+            if (!stream) return onFail('il server non raggiunge la telecamera');
+            holder.p = livePlay(box, stream, { radio: form.dataset.kind === 'radio', camera: cam, controls: true, timeout: 20000, onFail });
+            box.addEventListener('playing', () => { const w = box.querySelector('.qa-wait'); if (w) w.remove(); }, true);
+            if (box.querySelector('iframe')) { const w = box.querySelector('.qa-wait'); if (w) w.remove(); }
+        }, () => onFail('errore di rete'));
+    });
+    // IP cameras: ONVIF search (go2rtc on the server), then the device's profiles (main / sub stream).
+    const camFind = form.querySelector('.qa-cam-find');
+    if (camFind) camFind.addEventListener('click', () => {
+        const list = form.querySelector('.qa-cam-list'), info = form.querySelector('.qa-cam-info');
+        info.textContent = 'Cerco le telecamere nella rete…';
+        list.innerHTML = '';
+        qaCamPost({ action: 'discover' }).then(j => {
+            if (!j.success) { info.textContent = j.message || 'Ricerca non riuscita.'; return; }
+            info.textContent = j.devices.length ? 'Tocca una telecamera per vedere le qualità disponibili.' : 'Nessuna telecamera ONVIF trovata: scrivi l\'indirizzo rtsp:// a mano.';
+            list.innerHTML = j.devices.map(d => `<button type="button" data-host="${qaEsc(d.host)}"><i class="fas fa-video"></i> ${qaEsc(d.host)}</button>`).join('');
+        }, () => { info.textContent = 'Ricerca non riuscita.'; });
+    });
+    form.querySelector('.qa-cam-list')?.addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        const list = form.querySelector('.qa-cam-list'), info = form.querySelector('.qa-cam-info');
+        if (b.dataset.url) { // a profile: that is the tile's address
+            form.querySelector('input[name=camera_url]').value = b.dataset.url;
+            const title = form.querySelector('input[name=title]');
+            if (!title.value.trim()) title.value = b.dataset.name.replace(/\s*stream\d+$/, '');
+            list.querySelectorAll('button[data-url]').forEach(x => x.classList.toggle('sel', x === b));
+            info.textContent = 'Telecamera scelta: premi Prova per vederla, poi Salva.';
+            qaStopPreview(form);
+            return;
+        }
+        info.textContent = 'Leggo la telecamera ' + b.dataset.host + '…';
+        list.querySelectorAll('button[data-host]').forEach(x => x.classList.toggle('sel', x === b));
+        list.querySelectorAll('.qa-cam-dev, button[data-url]').forEach(x => x.remove());
+        qaCamPost({ action: 'profiles', host: b.dataset.host, user: form.querySelector('.qa-cam-user').value, pass: form.querySelector('.qa-cam-pass').value }).then(j => {
+            if (!j.success) { info.textContent = j.message || 'La telecamera non risponde.'; return; }
+            list.insertAdjacentHTML('beforeend', '<div class="qa-cam-dev">' + qaEsc(b.dataset.host) + ':</div>' + j.profiles.map((p, i) =>
+                `<button type="button" data-url="${qaEsc(p.url)}" data-name="${qaEsc(p.name)}">${qaEsc(p.name)}${i === 0 ? ' (principale)' : i === 1 ? ' (secondario, consigliato)' : ''}</button>`).join(''));
+            info.textContent = 'Tocca la qualità da mostrare sul monitor.';
+        }, () => { info.textContent = 'La telecamera non risponde.'; });
     });
 });
 // Videos are big: upload them with a progress bar instead of a page that looks frozen.

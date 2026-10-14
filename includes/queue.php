@@ -422,6 +422,87 @@ function queueRadioStations(): array
     }) ?? [];
 }
 
+/*
+ * IP cameras ("Telecamera" tiles, LAN server only): go2rtc on 127.0.0.1:1984 (bin/install-go2rtc.sh)
+ * turns the camera's RTSP / ONVIF stream into MSE for the browser. The camera address (with its
+ * password) stays on the server: the monitor only gets a stream name, unguessable without the
+ * monitor key, and Apache lets through only those names (bin/apache-go2rtc.conf).
+ */
+const QUEUE_GO2RTC = 'http://127.0.0.1:1984';
+
+/** A camera address for a tile: rtsp(s):// or onvif://; null when not valid. */
+function queueCameraUrl(?string $url): ?string
+{
+    $url = trim((string) $url);
+    return $url !== '' && strlen($url) <= 500 && preg_match('#^(rtsps?|onvif)://[^\s\'"]+$#i', $url) ? $url : null;
+}
+
+/** go2rtc stream name of a camera tile ('c' + 16 hex), or of an admin preview ('t' + 16 hex). */
+function queueCameraName(int|string $id, string $prefix = 'c'): string
+{
+    return $prefix . substr(hash_hmac('sha256', "camera:$id", (string) queueSettings()['key']), 0, 16);
+}
+
+/** Call the local go2rtc API; decoded JSON (or [] for an empty answer), null when go2rtc is not there. */
+function queueGo2rtc(string $method, string $path, int $timeout = 4): ?array
+{
+    $ch = curl_init(QUEUE_GO2RTC . $path);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST  => $method,
+        CURLOPT_CONNECTTIMEOUT => 1,
+        CURLOPT_TIMEOUT        => $timeout,
+    ]);
+    $body = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($body === false || $code < 200 || $code >= 300) {
+        return null;
+    }
+    return json_decode((string) $body, true) ?: [];
+}
+
+/** True when go2rtc runs on this server (the LAN one): only there the "Telecamera" tile works. */
+function queueCamerasAvailable(): bool
+{
+    static $ok = null;
+    return $ok ??= queueGo2rtc('GET', '/api', 1) !== null;
+}
+
+/** Register a stream in go2rtc (replacing any older source of that name). */
+function queueCameraPut(string $name, string $url): bool
+{
+    queueGo2rtc('DELETE', '/api/streams?src=' . rawurlencode($name));
+    return queueGo2rtc('PUT', '/api/streams?name=' . rawurlencode($name) . '&src=' . rawurlencode($url)) !== null;
+}
+
+/**
+ * Load the active camera tiles into go2rtc and drop the others (old tiles, admin previews).
+ * Number of cameras loaded, or null when go2rtc is not reachable.
+ */
+function queueCamerasSync(): ?int
+{
+    $have = queueGo2rtc('GET', '/api/streams');
+    if ($have === null) {
+        return null;
+    }
+    $want = [];
+    foreach (queueSlides() as $s) {
+        if ($s['stream_type'] === 'camera' && queueCameraUrl($s['stream_url'])) {
+            $want[queueCameraName($s['id'])] = $s['stream_url'];
+        }
+    }
+    foreach (array_keys($have) as $name) {
+        if (!isset($want[$name])) {
+            queueGo2rtc('DELETE', '/api/streams?src=' . rawurlencode((string) $name));
+        }
+    }
+    foreach ($want as $name => $url) {
+        queueCameraPut($name, $url);
+    }
+    return count($want);
+}
+
 /** GET a URL (short timeouts: the monitor must never hang on a slow feed). */
 function queueHttpGet(string $url): ?string
 {

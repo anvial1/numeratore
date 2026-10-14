@@ -1,0 +1,16 @@
+# Eliminacode: go2rtc, IP cameras (RTSP / ONVIF) for the monitor's "Telecamera" tiles. LAN server only.
+# Install: sh bin/install-go2rtc.sh — after changing the cameras the admin page reloads them by itself.
+[Unit]
+Description=Eliminacode cameras (go2rtc)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+User=www-data
+ExecStart=/usr/local/bin/go2rtc -config /etc/go2rtc/go2rtc.yaml
+ExecStartPost=/bin/sh -c 'sleep 2; /usr/bin/php /var/www/html/eliminacode/bin/cameras-sync.php'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

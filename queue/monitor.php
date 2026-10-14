@@ -77,7 +77,8 @@ html,body { margin:0; height:100%; background:linear-gradient(160deg,#0c4a6e 0%,
 .slide .livebox { position:absolute; inset:0; }
 .slide .livebox video, .slide .livebox iframe { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; border:0; }
 .slide .livebox audio { display:none; }
-.slide.tv .img { background-color:#000; }
+.slide .livebox video-camera { position:absolute; inset:0; }
+.slide.tv .img, .slide.camera .img { background-color:#000; }
 .onair { position:absolute; inset:0 0 22% 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2.4vh; }
 .onair img { max-width:46%; max-height:44%; object-fit:contain; background:#fff; border-radius:18px; padding:1.6vh; box-shadow:0 10px 40px rgba(0,0,0,.35); }
 .onair .lbl { display:flex; align-items:center; gap:1vw; font-weight:800; font-size:2.6vh; letter-spacing:.14em; background:rgba(220,38,38,.92); padding:.8vh 1.4vw; border-radius:999px; }
@@ -291,7 +292,7 @@ function renderSlides() {
     stopLive();
     if (!slides.length) { box.innerHTML = '<div class="placeholder">Aggiungi i prodotti da mostrare in Amministrazione › Eliminacode</div>'; return; }
     box.innerHTML = slides.map((s, i) => `
-        <div class="slide${s.image || s.video || s.live === 'tv' ? '' : ' noimg'}${s.live ? ' ' + s.live : ''}${i === 0 ? ' on' : ''}">
+        <div class="slide${s.image || s.video || s.live === 'tv' || s.live === 'camera' ? '' : ' noimg'}${s.live ? ' ' + s.live : ''}${i === 0 ? ' on' : ''}">
             <div class="img" ${s.image ? `style="background-image:url('${esc(s.image)}')"` : ''}></div>
             ${s.video ? `<video class="vid" data-src="${esc(s.video)}" muted playsinline preload="auto"${slides.length === 1 ? ' loop' : ''}></video>` : ''}
             ${s.live ? '<div class="livebox"></div>' : ''}
@@ -373,6 +374,7 @@ function showSlide(i) {
         const box = els[i].querySelector('.livebox');
         live = livePlay(box, s.stream, {
             radio: s.live === 'radio',
+            camera: s.live === 'camera',
             muted: !s.audio || Date.now() < callMuteUntil,
             onFail: () => {
                 live = null;
