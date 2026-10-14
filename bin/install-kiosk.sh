@@ -17,6 +17,9 @@ id monitor >/dev/null 2>&1 || useradd -m -s /usr/sbin/nologin monitor
 usermod -aG video,render,audio,input monitor
 loginctl enable-linger monitor   # its pipewire (sound) runs without a login
 
+# Never standby / hibernate: the screen must stay on all day.
+systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+
 cp "$APP/bin/eliminacode-kiosk.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now eliminacode-kiosk
