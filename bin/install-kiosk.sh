@@ -17,6 +17,10 @@ id monitor >/dev/null 2>&1 || useradd -m -s /usr/sbin/nologin monitor
 usermod -aG video,render,audio,input monitor
 loginctl enable-linger monitor   # its pipewire (sound) runs without a login
 
+# HDMI / DisplayPort sound: on the HP EliteDesk mini the driver skips the TV's pin
+# ("HDMI: pin NID 0x5 not registered") unless all pins are enabled. Takes effect after a reboot.
+echo "options snd_hda_codec_hdmi enable_all_pins=1" > /etc/modprobe.d/eliminacode-hdmi-audio.conf
+
 # Never standby / hibernate: the screen must stay on all day.
 systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
 
