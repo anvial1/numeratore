@@ -236,6 +236,9 @@ include __DIR__ . '/../includes/header.php';
             <input type="text" class="form-control" readonly value="<?= $v("$api&action=state") ?>" onclick="this.select()">
             <button type="button" class="btn btn-outline" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copiato'">Copia</button>
         </div>
+        <p class="qa-note mt-md"><strong>Comandi UDP</strong> (se il servizio <code>eliminacode-udp</code> è attivo sul server): un pacchetto alla porta 9999 con il testo
+            <code><?= $v($cfg['op_key']) ?> next 1</code>, <code>… recall 1</code>, <code>… call 1 15</code> o <code>… state</code>
+            (al posto di 1 va bene anche la lettera del servizio). Risponde al mittente in JSON.</p>
         <form method="POST" class="mt-md" onsubmit="return confirm('I link operatore attuali smetteranno di funzionare. Continuare?')">
             <input type="hidden" name="action" value="new_op_key">
             <button class="btn btn-outline"><i class="fas fa-rotate"></i> Genera nuova chiave operatore</button>

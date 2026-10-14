@@ -1,0 +1,15 @@
+# Eliminacode: UDP commands from another server (bin/udp-listener.php), port 9999.
+# Install: cp bin/eliminacode-udp.service /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now eliminacode-udp
+# After a git pull that changes udp-listener.php: systemctl restart eliminacode-udp
+[Unit]
+Description=Eliminacode UDP commands
+After=network.target mariadb.service
+
+[Service]
+User=www-data
+ExecStart=/usr/bin/php /var/www/html/eliminacode/bin/udp-listener.php 9999
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

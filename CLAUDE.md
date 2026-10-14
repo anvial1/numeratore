@@ -10,6 +10,9 @@ at the user's request. Integrating it into other projects is a later decision of
 - `api/queue.php` — state, feed (weather/news/tiles), take, next/recall/call. next/recall/call also work
   without a login (GET or POST) with `?ok=` = `settings.queue.op_key`, for another server; the links are in
   Amministrazione › Eliminacode › "Link operatore per un altro server" (`called_by` stays NULL).
+- `bin/udp-listener.php` — the same commands over UDP (port 9999, `<op_key> next 1`, or JSON), run by the
+  systemd unit `bin/eliminacode-udp.service`. Installed only on the LAN server 192.168.1.63, not on
+  production. After changing the listener: `systemctl restart eliminacode-udp` there.
 - `admin/index.php` (Eliminacode admin), `admin/users.php`, `admin/activity.php`.
 - Monitor tiles (`queue_slides`) take a photo or a video (`video_path`, MP4/WebM/MOV up to
   `QUEUE_VIDEO_MAX_MB` = 200, limits raised in `.htaccess`). The monitor downloads each video in full as a blob
