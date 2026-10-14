@@ -200,14 +200,16 @@ include __DIR__ . '/../includes/header.php';
 .qa-upload[data-kind=photo] .kf.photo, .qa-upload[data-kind=video] .kf.video, .qa-upload[data-kind=tv] .kf.tv, .qa-upload[data-kind=radio] .kf.radio { display:revert; }
 .qa-live { border-left:3px solid var(--primary, #0284c7); padding-left:12px; margin-bottom:8px; }
 .qa-chan-info { font-size:.8rem; color:var(--text-secondary); }
-.qa-chan-list { max-height:260px; overflow-y:auto; border:1px solid var(--border, #ddd); border-radius:8px; margin-top:6px; background:var(--bg-card, #fff); }
+.qa-chan-list { max-height:260px; overflow-y:auto; border:1px solid var(--border-color, #ddd); border-radius:8px; margin-top:6px; background:#fff; color:var(--text-primary, #0c3b56); }
 .qa-chan-list:empty { display:none; }
-.qa-chan-list button { display:flex; gap:10px; align-items:center; width:100%; padding:6px 10px; border:0; border-bottom:1px solid var(--border, #eee); background:none; text-align:left; cursor:pointer; color:inherit; font:inherit; }
-.qa-chan-list button:hover, .qa-chan-list button.sel { background:rgba(2,132,199,.1); }
-.qa-chan-list button.sel { font-weight:600; }
+.qa-chan-list button { display:flex; gap:10px; align-items:center; width:100%; padding:6px 10px; border:0; border-bottom:1px solid #eef2f5; background:#fff; text-align:left; cursor:pointer; color:var(--text-primary, #0c3b56); font:inherit; }
+.qa-chan-list button:hover { background:#e6f3fb; }
+.qa-chan-list button.sel { background:var(--primary, #0284c7); color:#fff; font-weight:600; }
+.qa-chan-list button.sel small { color:#e0f2fe; }
 .qa-chan-list img, .qa-chan-list .nl { width:40px; height:26px; object-fit:contain; flex:none; }
-.qa-chan-list small { margin-left:auto; color:var(--text-secondary); font-size:.75rem; white-space:nowrap; }
-.qa-chan-list button.blocked { opacity:.45; }
+.qa-chan-list small { margin-left:auto; color:#64748b; font-size:.75rem; white-space:nowrap; }
+.qa-chan-list button.blocked { color:#94a3b8; }
+.qa-chan-list button.blocked img { opacity:.4; }
 .qa-preview video, .qa-preview iframe { display:block; width:100%; max-width:480px; aspect-ratio:16/9; background:#000; border:0; border-radius:8px; margin-bottom:8px; }
 .qa-preview audio { display:block; width:100%; max-width:480px; margin-bottom:8px; }
 .qa-thumb.qa-logo { object-fit:contain; background:#fff; }
@@ -449,15 +451,36 @@ function qaRenderList(form) {
     const box = form.querySelector('.qa-chan-list'), list = qaLists[form.dataset.kind] || [];
     const q = qaFold(form.querySelector('.qa-chan').value.trim()), cur = form.querySelector('input[name=stream_url]').value.trim();
     const https = location.protocol === 'https:';
-    const hits = list.filter(c => !q || qaFold(c.name + ' ' + c.group).includes(q));
-    box.innerHTML = hits.map((c, i) => {
-        const blocked = https && /^http:/i.test(c.url);
-        const tag = blocked ? 'http: solo in rete locale' : (/geo-blocked/i.test(c.name) ? 'può non funzionare' : c.group);
+    const why = c => https && /^http:/i.test(c.url) ? 'http: solo in rete locale' : (c.ok === false ? 'non risponde ora' : '');
+    // Channels that cannot play from this browser go grey at the bottom.
+    const hits = list.filter(c => !q || qaFold(c.name + ' ' + c.group).includes(q)).sort((a, b) => !!why(a) - !!why(b));
+    const top = box.scrollTop;
+    box.innerHTML = hits.map(c => {
+        const blocked = why(c);
+        const tag = blocked || (c.ok ? c.group : (/geo-blocked/i.test(c.name) ? 'può non funzionare' : c.group));
         return `<button type="button" data-i="${list.indexOf(c)}" class="${c.url === cur ? 'sel' : ''}${blocked ? ' blocked' : ''}">`
             + (c.logo ? `<img src="${qaEsc(c.logo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : '<span class="nl"></span>')
             + `<span>${qaEsc(c.name)}</span><small>${qaEsc(tag)}</small></button>`;
     }).join('') || (list.length ? '<p class="qa-note" style="padding:8px 10px;margin:0">Nessun canale trovato: prova un altro nome.</p>' : '');
+    box.scrollTop = top;
     return hits.length;
+}
+// TV: try every playlist from this browser (same network, same geo-blocks, same CORS as the monitor), 8 at a time.
+const qaChecked = {};
+function qaCheckList(type, done) {
+    if (type !== 'tv' || qaChecked[type]) return;
+    qaChecked[type] = true;
+    const queue = (qaLists[type] || []).filter(c => !(location.protocol === 'https:' && /^http:/i.test(c.url)));
+    let left = queue.length;
+    const next = () => {
+        const c = queue.shift();
+        if (!c) return;
+        const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
+        fetch(c.url, { signal: ctl.signal, cache: 'no-store' })
+            .then(r => r.ok ? r.text() : '').then(b => { c.ok = b.includes('#EXTM3U'); }, () => { c.ok = false; })
+            .finally(() => { clearTimeout(t); if (--left === 0) done(); next(); });
+    };
+    for (let i = 0; i < 8; i++) next();
 }
 function qaStopPreview(form) {
     if (form._preview) { form._preview.stop(); form._preview = null; }
@@ -477,6 +500,16 @@ function qaSetKind(form) {
         if (form.dataset.kind !== k) return;
         qaRenderList(form);
         info.textContent = list.length ? list.length + (k === 'tv' ? ' canali TV' : ' radio') + ' nell\'elenco: tocca un nome per sceglierlo.' : 'Elenco non disponibile ora: puoi scrivere l\'indirizzo a mano.';
+        if (k === 'tv' && list.length && !qaChecked.tv) {
+            info.textContent += ' Controllo quali canali rispondono…';
+            qaCheckList('tv', () => {
+                const ok = list.filter(c => c.ok).length;
+                document.querySelectorAll('form.qa-upload[data-kind=tv]').forEach(f => {
+                    qaRenderList(f);
+                    f.querySelector('.qa-chan-info').textContent = ok + ' canali TV funzionano da qui (in grigio in fondo quelli che non rispondono): tocca un nome per sceglierlo.';
+                });
+            });
+        }
     });
 }
 document.querySelectorAll('form.qa-upload').forEach(form => {
