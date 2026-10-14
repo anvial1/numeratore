@@ -4,8 +4,8 @@
  *
  * Opened without a login: /queue/monitor.php?k=<settings.queue.key>.
  * Left: the number being served per service (flashes with a chime and a voice
- * on every call) and the last numbers called. Right: product tiles in rotation
- * (Amministrazione › Eliminacode) and the weather. Bottom: news headlines.
+ * on every call) and the last numbers called. Right: tiles in rotation
+ * (Amministrazione › Eliminacode: photo, video, live TV channel or radio) and the weather. Bottom: news headlines.
  * Sound is on by default when Chrome is started with --autoplay-policy=no-user-gesture-required
  * (admin/monitor-launcher.php downloads a Windows file that does it); otherwise one touch/key turns it on.
  */
@@ -74,6 +74,17 @@ html,body { margin:0; height:100%; background:linear-gradient(160deg,#0c4a6e 0%,
 .slide .img { position:absolute; inset:0; background-size:cover; background-position:center; }
 .slide video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000; }
 .slide video:not([src]) { display:none; }
+.slide .livebox { position:absolute; inset:0; }
+.slide .livebox video, .slide .livebox iframe { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; border:0; }
+.slide .livebox audio { display:none; }
+.slide.tv .img { background-color:#000; }
+.onair { position:absolute; inset:0 0 22% 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2.4vh; }
+.onair img { max-width:46%; max-height:44%; object-fit:contain; background:#fff; border-radius:18px; padding:1.6vh; box-shadow:0 10px 40px rgba(0,0,0,.35); }
+.onair .lbl { display:flex; align-items:center; gap:1vw; font-weight:800; font-size:2.6vh; letter-spacing:.14em; background:rgba(220,38,38,.92); padding:.8vh 1.4vw; border-radius:999px; }
+.onair .eq { display:flex; align-items:flex-end; gap:.25vw; height:2.4vh; }
+.onair .eq i { width:.35vw; background:#fff; border-radius:2px; animation:eq 1s ease-in-out infinite; }
+.onair .eq i:nth-child(2) { animation-delay:-.3s; } .onair .eq i:nth-child(3) { animation-delay:-.6s; } .onair .eq i:nth-child(4) { animation-delay:-.15s; }
+@keyframes eq { 0%,100% { height:25%; } 50% { height:100%; } }
 .slide .cap { position:relative; padding:3vh 2vw 2.6vh; background:linear-gradient(transparent, rgba(0,0,0,.85) 45%); }
 .slide .ttl { font-size:5.4vh; font-weight:800; line-height:1.05; }
 .slide .stl { font-size:2.6vh; color:rgba(255,255,255,.88); margin-top:.6vh; }
@@ -138,6 +149,7 @@ html,body { margin:0; height:100%; background:linear-gradient(160deg,#0c4a6e 0%,
 <div class="sound" id="sound">🔊 Tocca per attivare l'audio</div>
 <div class="offline" id="offline">Connessione assente</div>
 
+<script src="/assets/js/live-player.js?v=<?= @filemtime(__DIR__ . '/../assets/js/live-player.js') ?>"></script>
 <script>
 const KEY = <?= json_encode($key) ?>;
 const API = '/api/queue.php';
@@ -166,6 +178,7 @@ function initAudio() {
         audio.resume().then(soundBanner, soundBanner);
     } catch (e) {}
     setTimeout(soundBanner, 300);
+    try { unmuteTile(); } catch (e) {} // not ready yet on the first call, at page load
 }
 function soundBanner() {
     q('sound').style.display = (audio && audio.state === 'running') ? 'none' : 'block';
@@ -270,36 +283,75 @@ function renderSlides() {
     clearTimeout(slideTimer);
     const keep = new Set(slides.map(s => s.video).filter(Boolean));
     Object.keys(videoBlobs).forEach(u => { if (!keep.has(u)) { if (videoBlobs[u].url) URL.revokeObjectURL(videoBlobs[u].url); delete videoBlobs[u]; } });
+    stopLive();
     if (!slides.length) { box.innerHTML = '<div class="placeholder">Aggiungi i prodotti da mostrare in Amministrazione › Eliminacode</div>'; return; }
     box.innerHTML = slides.map((s, i) => `
-        <div class="slide${s.image || s.video ? '' : ' noimg'}${i === 0 ? ' on' : ''}">
+        <div class="slide${s.image || s.video || s.live === 'tv' ? '' : ' noimg'}${s.live ? ' ' + s.live : ''}${i === 0 ? ' on' : ''}">
             <div class="img" ${s.image ? `style="background-image:url('${esc(s.image)}')"` : ''}></div>
             ${s.video ? `<video class="vid" data-src="${esc(s.video)}" muted playsinline preload="auto"${slides.length === 1 ? ' loop' : ''}></video>` : ''}
+            ${s.live ? '<div class="livebox"></div>' : ''}
+            ${s.live === 'radio' ? `<div class="onair">${s.logo && !s.image ? `<img src="${esc(s.logo)}" alt="" onerror="this.remove()">` : ''}<div class="lbl"><span class="eq"><i></i><i></i><i></i><i></i></span>IN ONDA</div></div>` : ''}
             ${s.price ? `<div class="price">${esc(s.price)}</div>` : ''}
             ${s.title || s.subtitle ? `<div class="cap">${s.title ? `<div class="ttl">${esc(s.title)}</div>` : ''}${s.subtitle ? `<div class="stl">${esc(s.subtitle)}</div>` : ''}</div>` : ''}
         </div>`).join('') + (slides.length > 1 ? '<div class="dots">' + slides.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') + '</div>' : '');
     slides.forEach(s => { if (s.video) { if (videoBlobs[s.video] && videoBlobs[s.video].url) attachVideo(s.video); else preloadVideo(s.video); } });
     showSlide(0);
 }
-/** A video tile still downloading is skipped while there is something else to show. */
-function ready(el) {
-    const v = el.querySelector('video');
+/**
+ * A video tile still downloading is skipped while there is something else to show,
+ * and so is a TV / radio channel that failed to start in the last 2 minutes.
+ */
+function ready(el, i) {
+    const s = slides[i];
+    if (s && s.live) return !(liveFailed[s.stream] > Date.now() - 120000);
+    const v = el.querySelector('video.vid');
     return !v || !!v.src;
+}
+/* Live TV / radio (assets/js/live-player.js): only the tile on screen streams. */
+let live = null;
+const liveFailed = {};
+function stopLive() { if (live) { live.stop(); live = null; } }
+/** After the first touch / key (sound unlocked) the tile on screen gets its sound back. */
+function unmuteTile() {
+    const s = slides[slideIdx];
+    if (!s || !s.audio || Date.now() < callMuteUntil) return;
+    if (live) live.mute(false);
+    const v = document.querySelectorAll('.slide')[slideIdx]?.querySelector('video.vid');
+    if (v && v.src) { v.muted = false; v.play().catch(() => {}); }
 }
 function showSlide(i) {
     clearTimeout(slideTimer);
     const els = [...document.querySelectorAll('.slide')], dots = document.querySelectorAll('.dots i');
     if (!els.length) return;
-    for (let n = 0; n < els.length && !ready(els[i]); n++) i = (i + 1) % els.length;
+    for (let n = 0; n < els.length && !ready(els[i], i); n++) i = (i + 1) % els.length;
     slideIdx = i;
+    stopLive();
     els.forEach((el, k) => {
         el.classList.toggle('on', k === i);
         if (dots[k]) dots[k].classList.toggle('on', k === i);
-        const v = el.querySelector('video');
+        const v = el.querySelector('video.vid');
         if (v && k !== i) { v.pause(); v.onended = null; }
     });
     const next = () => showSlide((i + 1) % els.length);
-    const v = els[i].querySelector('video');
+    const s = slides[i];
+    if (s && s.live) {
+        const box = els[i].querySelector('.livebox');
+        live = livePlay(box, s.stream, {
+            radio: s.live === 'radio',
+            muted: !s.audio || Date.now() < callMuteUntil,
+            onFail: () => {
+                live = null;
+                liveFailed[s.stream] = Date.now();
+                // A channel that does not start: on to the next tile, or try again in a minute when it is the only one.
+                if (slideIdx !== i) return;
+                clearTimeout(slideTimer);
+                slideTimer = setTimeout(els.length > 1 ? next : () => showSlide(i), els.length > 1 ? 500 : 60000);
+            },
+        });
+        if (els.length > 1) slideTimer = setTimeout(next, Math.max(10, s.live_secs || 60) * 1000);
+        return;
+    }
+    const v = els[i].querySelector('video.vid');
     if (v && v.src) {
         try { v.currentTime = 0; } catch (e) {}
         playVideo(v, slides[i]);
@@ -320,11 +372,15 @@ function playVideo(v, s) {
 /** The video's own sound goes quiet while a number is called (chime + voice). */
 function muteVideosForCall() {
     callMuteUntil = Date.now() + 7000;
-    document.querySelectorAll('.slide video').forEach(v => v.muted = true);
+    document.querySelectorAll('.slide video.vid').forEach(v => v.muted = true);
+    if (live) live.mute(true);
     setTimeout(() => {
         if (Date.now() < callMuteUntil) return;
-        const v = document.querySelectorAll('.slide')[slideIdx]?.querySelector('video');
-        if (v && slides[slideIdx] && slides[slideIdx].audio) v.muted = false;
+        const s = slides[slideIdx];
+        if (!s || !s.audio) return;
+        if (live) live.mute(false);
+        const v = document.querySelectorAll('.slide')[slideIdx]?.querySelector('video.vid');
+        if (v) v.muted = false;
     }, 7100);
 }
 

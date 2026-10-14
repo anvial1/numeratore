@@ -47,7 +47,11 @@ try {
                 'price'    => (string) ($s['price'] ?? ''),
                 'image'    => (string) ($s['image_path'] ?? ''),
                 'video'    => (string) ($s['video_path'] ?? ''),
-                'audio'    => (bool) ($s['video_audio'] ?? false),
+                'audio'    => (bool) ($s['video_audio'] ?? false) || ($s['stream_type'] ?? '') === 'radio',
+                'live'     => $s['stream_url'] ? (string) $s['stream_type'] : '',
+                'stream'   => (string) ($s['stream_url'] ?? ''),
+                'logo'     => (string) ($s['stream_logo'] ?? ''),
+                'live_secs' => (int) ($s['stream_seconds'] ?? 60),
             ], queueSlides());
             jsonResponse([
                 'success' => true,

@@ -364,6 +364,64 @@ function queueDeleteUpload(?string $path): void
     }
 }
 
+/** A live TV / radio address for a tile: http(s) only; null when not valid. */
+function queueStreamUrl(?string $url): ?string
+{
+    $url = trim((string) $url);
+    return $url !== '' && strlen($url) <= 500 && preg_match('#^https?://#i', $url) && filter_var($url, FILTER_VALIDATE_URL) ? $url : null;
+}
+
+/**
+ * Italian online TV channels from the public iptv-org list (HLS .m3u8), for the tile
+ * channel picker. [{name, url, logo, group}], cached 1 day.
+ */
+function queueTvChannels(): array
+{
+    return queueCached('tv:it', 86400, static function () {
+        $m3u = queueHttpGet('https://iptv-org.github.io/iptv/countries/it.m3u');
+        if ($m3u === null) {
+            return null;
+        }
+        $out = [];
+        $info = null;
+        foreach (preg_split('/\R/', $m3u) as $line) {
+            $line = trim($line);
+            if (str_starts_with($line, '#EXTINF')) {
+                preg_match('/tvg-logo="([^"]*)"/', $line, $logo);
+                preg_match('/group-title="([^"]*)"/', $line, $group);
+                $info = ['name' => trim((string) substr($line, strrpos($line, ',') + 1)), 'logo' => $logo[1] ?? '', 'group' => $group[1] ?? ''];
+            } elseif ($info && ($url = queueStreamUrl($line))) {
+                $out[] = $info + ['url' => $url];
+                $info = null;
+            }
+        }
+        usort($out, static fn($a, $b) => strnatcasecmp($a['name'], $b['name']));
+        return $out ?: null;
+    }) ?? [];
+}
+
+/** Italian radio stations from radio-browser.info, most voted first. [{name, url, logo, group}], cached 1 day. */
+function queueRadioStations(): array
+{
+    return queueCached('radio:it', 86400, static function () {
+        foreach (['de1', 'fi1', 'nl1'] as $host) {
+            $j = json_decode((string) queueHttpGet("https://$host.api.radio-browser.info/json/stations/bycountrycodeexact/IT?order=votes&reverse=true&limit=400&hidebroken=true"), true);
+            if (is_array($j) && $j) {
+                break;
+            }
+        }
+        $out = [];
+        foreach ((array) ($j ?? []) as $s) {
+            $url = queueStreamUrl($s['url_resolved'] ?? $s['url'] ?? '');
+            $name = trim((string) ($s['name'] ?? ''));
+            if ($url && $name !== '') {
+                $out[$name] ??= ['name' => $name, 'url' => $url, 'logo' => (string) (queueStreamUrl($s['favicon'] ?? '') ?? ''), 'group' => (string) ($s['codec'] ?? '')];
+            }
+        }
+        return array_values($out) ?: null;
+    }) ?? [];
+}
+
 /** GET a URL (short timeouts: the monitor must never hang on a slow feed). */
 function queueHttpGet(string $url): ?string
 {

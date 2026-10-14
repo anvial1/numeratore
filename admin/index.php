@@ -65,33 +65,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $st->execute([$id]);
             $cur = $st->fetch() ?: $cur;
         }
+        // Tile type: photo, uploaded video, live TV channel or radio station.
+        $kind   = in_array($_POST['kind'] ?? '', ['photo', 'video', 'tv', 'radio'], true) ? $_POST['kind'] : 'photo';
+        $live   = $kind === 'tv' || $kind === 'radio';
+        $stream = $live ? queueStreamUrl($_POST['stream_url'] ?? '') : null;
+        if ($live && !$stream) $back('Scegli un canale dall\'elenco oppure scrivi l\'indirizzo dello streaming (http:// o https://).', 'slides');
         $title = mb_substr(trim((string) ($_POST['title'] ?? '')), 0, 120);
         $img = queueSaveImage('image');
         if (!empty($_FILES['image']['name']) && !$img) $back('Immagine non valida (JPG, PNG, WebP o GIF, massimo 8 MB).', 'slides');
-        $vid = queueSaveVideo('video');
-        if (!empty($_FILES['video']['name']) && !$vid) {
+        $vid = $kind === 'video' ? queueSaveVideo('video') : null;
+        if ($kind === 'video' && !empty($_FILES['video']['name']) && !$vid) {
             $err = (int) ($_FILES['video']['error'] ?? 0);
             $back(in_array($err, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true) || ($_FILES['video']['size'] ?? 0) > QUEUE_VIDEO_MAX_MB * 1048576
                 ? 'Video troppo grande: massimo ' . QUEUE_VIDEO_MAX_MB . ' MB.'
                 : 'Video non valido: usa un file MP4 (H.264) o WebM.', 'slides');
         }
         $image = $img ?: (isset($_POST['remove_image']) ? null : $cur['image_path']);
-        $video = $vid ?: (isset($_POST['remove_video']) ? null : $cur['video_path']);
-        if ($title === '' && !$image && !$video) $back('Inserisci un titolo, una foto o un video.', 'slides');
+        $video = $kind !== 'video' ? null : ($vid ?: (isset($_POST['remove_video']) ? null : $cur['video_path']));
+        if ($kind === 'video' && !$video) $back('Scegli il file del video.', 'slides');
+        if ($title === '' && !$image && !$video && !$stream) $back('Inserisci un titolo, una foto o un video.', 'slides');
         if ($cur['video_path'] && $cur['video_path'] !== $video) queueDeleteUpload($cur['video_path']);
         $sub   = mb_substr(trim((string) ($_POST['subtitle'] ?? '')), 0, 255) ?: null;
         $price = mb_substr(trim((string) ($_POST['price'] ?? '')), 0, 40) ?: null;
         $sort  = (int) ($_POST['sort_order'] ?? 0);
         $act   = isset($_POST['active']) ? 1 : 0;
         $audio = isset($_POST['video_audio']) ? 1 : 0;
+        $logo  = $live ? queueStreamUrl($_POST['stream_logo'] ?? '') : null;
+        $secs  = max(10, min(3600, (int) ($_POST['stream_seconds'] ?? 60)));
+        $cols  = [$title, $sub, $price, $image, $video, $audio, $live ? $kind : null, $stream, $logo, $secs, $sort, $act];
         if ($action === 'add_slide') {
-            $pdo->prepare("INSERT INTO queue_slides (title, subtitle, price, image_path, video_path, video_audio, sort_order, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-                ->execute([$title, $sub, $price, $image, $video, $audio, $sort, $act]);
+            $pdo->prepare("INSERT INTO queue_slides (title, subtitle, price, image_path, video_path, video_audio, stream_type, stream_url, stream_logo, stream_seconds, sort_order, active)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")->execute($cols);
         } else {
-            $pdo->prepare("UPDATE queue_slides SET title = ?, subtitle = ?, price = ?, image_path = ?, video_path = ?, video_audio = ?, sort_order = ?, active = ? WHERE id = ?")
-                ->execute([$title, $sub, $price, $image, $video, $audio, $sort, $act, $id]);
+            $pdo->prepare("UPDATE queue_slides SET title = ?, subtitle = ?, price = ?, image_path = ?, video_path = ?, video_audio = ?,
+                           stream_type = ?, stream_url = ?, stream_logo = ?, stream_seconds = ?, sort_order = ?, active = ? WHERE id = ?")
+                ->execute([...$cols, $id]);
         }
-        $back($vid ? 'Video caricato: il monitor lo scarica e lo mostra entro 5 minuti.' : 'Riquadro salvato.', 'slides');
+        $back($vid ? 'Video caricato: il monitor lo scarica e lo mostra entro 5 minuti.'
+            : ($live ? 'Riquadro salvato: il monitor lo mostra entro 5 minuti.' : 'Riquadro salvato.'), 'slides');
     }
 
     if ($action === 'save_settings') {
@@ -182,6 +193,16 @@ include __DIR__ . '/../includes/header.php';
 .qa-progress { font-size:.88rem; color:var(--text-secondary); } .qa-progress progress { width:160px; vertical-align:middle; }
 .qa-slide { border:1px solid var(--border, #eee); border-radius:10px; padding:12px; margin-bottom:12px; display:grid; grid-template-columns:100px 1fr; gap:14px; }
 @media (max-width:700px){ .qa-slide { grid-template-columns:1fr; } .qa-wide { overflow-x:auto; } }
+.qa-kinds { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.qa-kind { border:1px solid var(--border, #ddd); border-radius:8px; padding:6px 12px; cursor:pointer; }
+.qa-kind:has(input:checked) { border-color:var(--primary, #0284c7); background:rgba(2,132,199,.08); font-weight:600; }
+.qa-upload .kf { display:none; }
+.qa-upload[data-kind=photo] .kf.photo, .qa-upload[data-kind=video] .kf.video, .qa-upload[data-kind=tv] .kf.tv, .qa-upload[data-kind=radio] .kf.radio { display:revert; }
+.qa-live { border-left:3px solid var(--primary, #0284c7); padding-left:12px; margin-bottom:8px; }
+.qa-chan-info { font-size:.8rem; color:var(--text-secondary); }
+.qa-preview video, .qa-preview iframe { display:block; width:100%; max-width:480px; aspect-ratio:16/9; background:#000; border:0; border-radius:8px; margin-bottom:8px; }
+.qa-preview audio { display:block; width:100%; max-width:480px; margin-bottom:8px; }
+.qa-thumb.qa-logo { object-fit:contain; background:#fff; }
 </style>
 
 <div class="page-header">
@@ -306,37 +327,82 @@ include __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
+<?php
+// Tile form fields, shared by the existing tiles and "Nuovo riquadro". $s = the tile, or null for a new one.
+$slideFields = static function (?array $s) use ($v, $slides): void {
+    $kind = $s ? ($s['stream_type'] ?: ($s['video_path'] ? 'video' : 'photo')) : 'photo';
+    $kinds = ['photo' => ['fa-image', 'Foto'], 'video' => ['fa-film', 'Video'], 'tv' => ['fa-tv', 'TV in diretta'], 'radio' => ['fa-radio', 'Radio']];
+    ?>
+    <div class="qa-kinds">
+        <?php foreach ($kinds as $k => [$icon, $label]): ?>
+            <label class="qa-kind"><input type="radio" name="kind" value="<?= $k ?>" <?= $k === $kind ? 'checked' : '' ?>> <i class="fas <?= $icon ?>"></i> <?= $label ?></label>
+        <?php endforeach; ?>
+    </div>
+    <div class="form-row">
+        <div class="form-group"><label class="form-label">Titolo</label><input type="text" name="title" maxlength="120" class="form-control" value="<?= $v($s['title'] ?? '') ?>" placeholder="<?= $s ? '' : 'Focaccia del giorno' ?>"></div>
+        <div class="form-group"><label class="form-label">Prezzo / etichetta</label><input type="text" name="price" maxlength="40" class="form-control" value="<?= $v($s['price'] ?? '') ?>" placeholder="€ 3,50 o NOVITÀ"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Descrizione</label><input type="text" name="subtitle" maxlength="255" class="form-control" value="<?= $v($s['subtitle'] ?? '') ?>"></div>
+    <div class="kf tv radio qa-live">
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label"><span class="kf tv">Canale TV</span><span class="kf radio">Stazione radio</span> (scrivi per cercare nell'elenco)</label>
+                <input type="text" class="form-control qa-chan" autocomplete="off" placeholder="Es. LA7, Rai News 24, Radio Italia…">
+                <small class="qa-chan-info"></small>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Indirizzo dello streaming</label>
+                <input type="text" name="stream_url" maxlength="500" class="form-control" value="<?= $v($s['stream_url'] ?? '') ?>" placeholder="https://…/live.m3u8, un link YouTube o una radio .mp3">
+            </div>
+        </div>
+        <input type="hidden" name="stream_logo" value="<?= $v($s['stream_logo'] ?? '') ?>">
+        <div class="form-row" style="align-items:flex-end">
+            <div class="form-group" style="max-width:190px"><label class="form-label">Secondi sul monitor</label><input type="number" name="stream_seconds" min="10" max="3600" class="form-control" value="<?= (int) ($s['stream_seconds'] ?? 60) ?>"></div>
+            <div class="form-group"><button type="button" class="btn btn-outline qa-try"><i class="fas fa-play"></i> Prova</button></div>
+        </div>
+        <div class="qa-preview"></div>
+    </div>
+    <div class="form-row" style="align-items:center">
+        <div class="form-group kf photo tv radio">
+            <label class="form-label"><span class="kf photo"><?= !empty($s['image_path']) ? 'Nuova foto' : 'Foto' ?></span><span class="kf tv">Immagine mentre il canale parte (facoltativa)</span><span class="kf radio">Immagine di sfondo (facoltativa, altrimenti il logo)</span></label>
+            <input type="file" name="image" accept="image/*" class="form-control">
+        </div>
+        <div class="form-group kf video"><label class="form-label"><?= !empty($s['video_path']) ? 'Nuovo video' : 'Video' ?> (max <?= QUEUE_VIDEO_MAX_MB ?> MB)</label><input type="file" name="video" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" class="form-control"></div>
+        <div class="form-group" style="max-width:110px"><label class="form-label">Ordine</label><input type="number" name="sort_order" class="form-control" value="<?= (int) ($s['sort_order'] ?? count($slides) + 1) ?>"></div>
+    </div>
+    <?php if ($s): ?><label><input type="checkbox" name="active" <?= $s['active'] ? 'checked' : '' ?>> Attivo</label> &nbsp;
+    <?php else: ?><input type="hidden" name="active" value="1"><?php endif; ?>
+    <span class="kf video tv"><label title="Si azzera da solo quando viene chiamato un numero"><input type="checkbox" name="video_audio" <?= !empty($s['video_audio']) ? 'checked' : '' ?>> Audio</label> &nbsp;</span>
+    <?php if (!empty($s['image_path'])): ?><label><input type="checkbox" name="remove_image"> Togli la foto</label> &nbsp;<?php endif; ?>
+    <?php if (!empty($s['video_path'])): ?><span class="kf video"><label><input type="checkbox" name="remove_video"> Togli il video</label></span><?php endif; ?>
+    <?php
+};
+?>
 <div class="card mt-lg" id="slides">
-    <div class="card-header"><h2><i class="fas fa-images"></i> Riquadri prodotti sul monitor</h2></div>
+    <div class="card-header"><h2><i class="fas fa-images"></i> Riquadri sul monitor</h2></div>
     <div class="card-body">
-        <p class="qa-note">I riquadri attivi ruotano sul monitor. Usa foto orizzontali (es. 1600×1000) oppure un video orizzontale
-            (MP4 H.264 o WebM, 16:9, massimo <?= QUEUE_VIDEO_MAX_MB ?> MB). Il monitor scarica il video per intero prima di mostrarlo,
-            poi lo riproduce fino alla fine prima di passare al riquadro successivo. Sui video titolo, prezzo e descrizione sono facoltativi.</p>
-        <?php foreach ($slides as $s): ?>
+        <p class="qa-note">I riquadri attivi ruotano sul monitor. Per ogni riquadro scegli cosa mostrare:</p>
+        <ul class="qa-note">
+            <li><strong>Foto</strong>: orizzontale (es. 1600×1000), resta per i secondi impostati in "Monitor" più sotto.</li>
+            <li><strong>Video</strong>: MP4 H.264 o WebM orizzontale, massimo <?= QUEUE_VIDEO_MAX_MB ?> MB. Il monitor lo scarica per intero e lo riproduce fino alla fine.</li>
+            <li><strong>TV in diretta</strong>: scegli un canale dall'elenco dei canali italiani online, oppure incolla l'indirizzo di uno streaming (.m3u8) o un link YouTube di una diretta.</li>
+            <li><strong>Radio</strong>: scegli una stazione dall'elenco delle radio italiane o incolla l'indirizzo dello streaming; sul monitor si vede il logo con la scritta "In onda".</li>
+        </ul>
+        <p class="qa-note">TV e radio restano sul monitor per i secondi che scegli, poi si passa al riquadro successivo; se c'è un solo riquadro restano sempre. Il loro audio si abbassa da solo quando viene chiamato un numero.
+            Gli elenchi vengono da fonti pubbliche e alcuni canali possono essere spenti o non funzionare nel browser: premi <strong>Prova</strong> prima di salvare. Se un canale non parte, il monitor passa al riquadro successivo.
+            <?php if ($https): ?><br><strong>Questo sito è in https</strong>: i canali con indirizzo <code>http://</code> vengono bloccati dal browser, usa quelli <code>https://</code>.<?php endif; ?></p>
+        <?php foreach ($slides as $s): $kind = $s['stream_type'] ?: ($s['video_path'] ? 'video' : 'photo'); ?>
             <form method="POST" enctype="multipart/form-data" class="qa-slide qa-upload">
                 <input type="hidden" name="action" value="save_slide"><input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
                 <div>
-                    <?php if ($s['video_path']): ?>
+                    <?php if ($kind === 'video'): ?>
                         <video class="qa-thumb" src="<?= $v($s['video_path']) ?>#t=1" muted preload="metadata" playsinline></video>
-                        <span class="qa-badge"><i class="fas fa-film"></i> Video</span>
-                    <?php elseif ($s['image_path']): ?><img class="qa-thumb" src="<?= $v($s['image_path']) ?>" alt="">
+                    <?php elseif ($s['image_path'] || $s['stream_logo']): ?><img class="qa-thumb<?= $s['image_path'] ? '' : ' qa-logo' ?>" src="<?= $v($s['image_path'] ?: $s['stream_logo']) ?>" alt="">
                     <?php else: ?><span class="qa-thumb"></span><?php endif; ?>
+                    <span class="qa-badge"><i class="fas <?= ['photo' => 'fa-image', 'video' => 'fa-film', 'tv' => 'fa-tv', 'radio' => 'fa-radio'][$kind] ?>"></i> <?= ['photo' => 'Foto', 'video' => 'Video', 'tv' => 'TV in diretta', 'radio' => 'Radio'][$kind] ?></span>
                 </div>
                 <div>
-                    <div class="form-row">
-                        <div class="form-group"><label class="form-label">Titolo</label><input type="text" name="title" maxlength="120" class="form-control" value="<?= $v($s['title']) ?>"></div>
-                        <div class="form-group"><label class="form-label">Prezzo / etichetta</label><input type="text" name="price" maxlength="40" class="form-control" value="<?= $v($s['price']) ?>" placeholder="€ 3,50"></div>
-                    </div>
-                    <div class="form-group"><label class="form-label">Descrizione</label><input type="text" name="subtitle" maxlength="255" class="form-control" value="<?= $v($s['subtitle']) ?>"></div>
-                    <div class="form-row" style="align-items:center">
-                        <div class="form-group"><label class="form-label"><?= $s['image_path'] ? 'Nuova foto' : 'Foto' ?></label><input type="file" name="image" accept="image/*" class="form-control"></div>
-                        <div class="form-group"><label class="form-label"><?= $s['video_path'] ? 'Nuovo video' : 'Video' ?></label><input type="file" name="video" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" class="form-control"></div>
-                        <div class="form-group" style="max-width:110px"><label class="form-label">Ordine</label><input type="number" name="sort_order" class="form-control" value="<?= (int) $s['sort_order'] ?>"></div>
-                    </div>
-                    <label><input type="checkbox" name="active" <?= $s['active'] ? 'checked' : '' ?>> Attivo</label>
-                    &nbsp; <label title="Si azzera da solo quando viene chiamato un numero"><input type="checkbox" name="video_audio" <?= $s['video_audio'] ? 'checked' : '' ?>> Audio del video</label>
-                    <?php if ($s['image_path']): ?>&nbsp; <label><input type="checkbox" name="remove_image"> Togli la foto</label><?php endif; ?>
-                    <?php if ($s['video_path']): ?>&nbsp; <label><input type="checkbox" name="remove_video"> Togli il video</label><?php endif; ?>
+                    <?php $slideFields($s); ?>
                     <div class="mt-md" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                         <button class="btn btn-primary btn-sm"><i class="fas fa-save"></i> Salva</button>
                         <button class="btn btn-outline btn-sm" style="color:var(--danger)" name="delete" value="1" formnovalidate onclick="return confirm('Eliminare questo riquadro?')"><i class="fas fa-trash"></i> Elimina</button>
@@ -348,30 +414,83 @@ include __DIR__ . '/../includes/header.php';
         <h3 style="font-size:1rem" class="mt-lg">Nuovo riquadro</h3>
         <form method="POST" enctype="multipart/form-data" class="qa-upload">
             <input type="hidden" name="action" value="add_slide">
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Titolo</label><input type="text" name="title" maxlength="120" class="form-control" placeholder="Focaccia del giorno"></div>
-                <div class="form-group"><label class="form-label">Prezzo / etichetta</label><input type="text" name="price" maxlength="40" class="form-control" placeholder="€ 3,50 o NOVITÀ"></div>
-            </div>
-            <div class="form-group"><label class="form-label">Descrizione</label><input type="text" name="subtitle" maxlength="255" class="form-control" placeholder="Pomodorini, origano e olio extravergine"></div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Foto</label><input type="file" name="image" accept="image/*" class="form-control"></div>
-                <div class="form-group"><label class="form-label">oppure Video (max <?= QUEUE_VIDEO_MAX_MB ?> MB)</label><input type="file" name="video" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" class="form-control"></div>
-                <div class="form-group" style="max-width:110px"><label class="form-label">Ordine</label><input type="number" name="sort_order" class="form-control" value="<?= count($slides) + 1 ?>"></div>
-            </div>
-            <input type="hidden" name="active" value="1">
-            <label title="Si azzera da solo quando viene chiamato un numero"><input type="checkbox" name="video_audio"> Audio del video</label>
+            <?php $slideFields(null); ?>
             <div class="mt-md" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <button class="btn btn-success"><i class="fas fa-plus"></i> Aggiungi riquadro</button>
                 <span class="qa-progress"></span>
             </div>
         </form>
+        <datalist id="qa-list-tv"></datalist><datalist id="qa-list-radio"></datalist>
     </div>
 </div>
+<script src="/assets/js/live-player.js?v=<?= @filemtime(__DIR__ . '/../assets/js/live-player.js') ?>"></script>
 <script>
+const qaEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Channel lists (TV: iptv-org, radio: radio-browser), loaded from the server only when a TV / radio tile is open.
+const qaLists = {}, qaLoading = {};
+function qaLoadList(type) {
+    if (qaLists[type]) return Promise.resolve(qaLists[type]);
+    return qaLoading[type] || (qaLoading[type] = fetch('/admin/channels.php?type=' + type).then(r => r.json()).then(j => {
+        qaLists[type] = new Map((j.channels || []).map(c => [c.name, c]));
+        document.getElementById('qa-list-' + type).innerHTML = (j.channels || []).map(c => `<option value="${qaEsc(c.name)}">${qaEsc(c.group)}</option>`).join('');
+        return qaLists[type];
+    }).catch(() => { delete qaLoading[type]; return new Map(); }));
+}
+function qaStopPreview(form) {
+    if (form._preview) { form._preview.stop(); form._preview = null; }
+    const box = form.querySelector('.qa-preview'), btn = form.querySelector('.qa-try');
+    if (box) box.innerHTML = '';
+    if (btn) btn.innerHTML = '<i class="fas fa-play"></i> Prova';
+}
+function qaSetKind(form) {
+    const k = form.querySelector('input[name=kind]:checked').value;
+    form.dataset.kind = k;
+    qaStopPreview(form);
+    if (k !== 'tv' && k !== 'radio') return;
+    const chan = form.querySelector('.qa-chan'), info = form.querySelector('.qa-chan-info');
+    chan.setAttribute('list', 'qa-list-' + k);
+    info.textContent = 'Carico l\'elenco…';
+    qaLoadList(k).then(list => { info.textContent = list.size ? list.size + (k === 'tv' ? ' canali TV' : ' radio') + ' nell\'elenco' : 'Elenco non disponibile ora: puoi scrivere l\'indirizzo a mano.'; });
+}
+document.querySelectorAll('form.qa-upload').forEach(form => {
+    form.querySelectorAll('input[name=kind]').forEach(r => r.addEventListener('change', () => qaSetKind(form)));
+    qaSetKind(form);
+    const chan = form.querySelector('.qa-chan'), url = form.querySelector('input[name=stream_url]'), logo = form.querySelector('input[name=stream_logo]');
+    chan.addEventListener('input', () => {
+        const c = (qaLists[form.dataset.kind] || new Map()).get(chan.value);
+        if (!c) return;
+        url.value = c.url;
+        logo.value = c.logo || '';
+        const title = form.querySelector('input[name=title]');
+        if (!title.value.trim()) title.value = c.name.replace(/\s*[\[(].*$/, '');
+        qaStopPreview(form);
+    });
+    url.addEventListener('input', () => { logo.value = ''; qaStopPreview(form); });
+    form.querySelector('.qa-try').addEventListener('click', () => {
+        if (form._preview) return qaStopPreview(form);
+        const box = form.querySelector('.qa-preview'), btn = form.querySelector('.qa-try');
+        if (!url.value.trim()) { box.innerHTML = '<p class="qa-note">Scegli prima un canale o scrivi l\'indirizzo.</p>'; return; }
+        box.innerHTML = '<p class="qa-note qa-wait">Avvio del canale…</p>';
+        btn.innerHTML = '<i class="fas fa-stop"></i> Ferma';
+        form._preview = livePlay(box, url.value.trim(), {
+            radio: form.dataset.kind === 'radio', controls: true, timeout: 20000,
+            onFail: why => {
+                form._preview = null;
+                btn.innerHTML = '<i class="fas fa-play"></i> Prova';
+                box.innerHTML = '<p class="qa-note" style="color:var(--danger)"><i class="fas fa-triangle-exclamation"></i> ' + (why === 'mixed'
+                    ? 'Questo canale è http:// e il sito è https://: il browser lo blocca. Scegli un canale https://.'
+                    : 'Il canale non parte (' + qaEsc(why) + '): potrebbe essere spento o non visibile da browser. Prova un altro canale.') + '</p>';
+            },
+        });
+        const media = box.querySelector('video,audio,iframe');
+        if (media) media.addEventListener('playing', () => { const w = box.querySelector('.qa-wait'); if (w) w.remove(); });
+        if (media && media.tagName === 'IFRAME') { const w = box.querySelector('.qa-wait'); if (w) w.remove(); }
+    });
+});
 // Videos are big: upload them with a progress bar instead of a page that looks frozen.
 document.querySelectorAll('form.qa-upload').forEach(form => form.addEventListener('submit', e => {
     const vid = form.querySelector('input[name=video]');
-    if ((e.submitter && e.submitter.name === 'delete') || !vid || !vid.files.length) return;
+    if ((e.submitter && e.submitter.name === 'delete') || form.dataset.kind !== 'video' || !vid || !vid.files.length) return;
     e.preventDefault();
     if (vid.files[0].size > <?= QUEUE_VIDEO_MAX_MB ?> * 1048576) {
         alert('Il video è troppo grande: massimo <?= QUEUE_VIDEO_MAX_MB ?> MB.');
