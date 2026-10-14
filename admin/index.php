@@ -200,6 +200,14 @@ include __DIR__ . '/../includes/header.php';
 .qa-upload[data-kind=photo] .kf.photo, .qa-upload[data-kind=video] .kf.video, .qa-upload[data-kind=tv] .kf.tv, .qa-upload[data-kind=radio] .kf.radio { display:revert; }
 .qa-live { border-left:3px solid var(--primary, #0284c7); padding-left:12px; margin-bottom:8px; }
 .qa-chan-info { font-size:.8rem; color:var(--text-secondary); }
+.qa-chan-list { max-height:260px; overflow-y:auto; border:1px solid var(--border, #ddd); border-radius:8px; margin-top:6px; background:var(--bg-card, #fff); }
+.qa-chan-list:empty { display:none; }
+.qa-chan-list button { display:flex; gap:10px; align-items:center; width:100%; padding:6px 10px; border:0; border-bottom:1px solid var(--border, #eee); background:none; text-align:left; cursor:pointer; color:inherit; font:inherit; }
+.qa-chan-list button:hover, .qa-chan-list button.sel { background:rgba(2,132,199,.1); }
+.qa-chan-list button.sel { font-weight:600; }
+.qa-chan-list img, .qa-chan-list .nl { width:40px; height:26px; object-fit:contain; flex:none; }
+.qa-chan-list small { margin-left:auto; color:var(--text-secondary); font-size:.75rem; white-space:nowrap; }
+.qa-chan-list button.blocked { opacity:.45; }
 .qa-preview video, .qa-preview iframe { display:block; width:100%; max-width:480px; aspect-ratio:16/9; background:#000; border:0; border-radius:8px; margin-bottom:8px; }
 .qa-preview audio { display:block; width:100%; max-width:480px; margin-bottom:8px; }
 .qa-thumb.qa-logo { object-fit:contain; background:#fff; }
@@ -346,8 +354,9 @@ $slideFields = static function (?array $s) use ($v, $slides): void {
     <div class="kf tv radio qa-live">
         <div class="form-row">
             <div class="form-group">
-                <label class="form-label"><span class="kf tv">Canale TV</span><span class="kf radio">Stazione radio</span> (scrivi per cercare nell'elenco)</label>
-                <input type="text" class="form-control qa-chan" autocomplete="off" placeholder="Es. LA7, Rai News 24, Radio Italia…">
+                <label class="form-label"><span class="kf tv">Canale TV</span><span class="kf radio">Stazione radio</span>: scegli dall'elenco (scrivi per filtrare)</label>
+                <input type="search" class="form-control qa-chan" autocomplete="off" placeholder="Cerca: LA7, Rai News 24, Radio Italia…">
+                <div class="qa-chan-list"></div>
                 <small class="qa-chan-info"></small>
             </div>
             <div class="form-group">
@@ -420,7 +429,6 @@ $slideFields = static function (?array $s) use ($v, $slides): void {
                 <span class="qa-progress"></span>
             </div>
         </form>
-        <datalist id="qa-list-tv"></datalist><datalist id="qa-list-radio"></datalist>
     </div>
 </div>
 <script src="/assets/js/live-player.js?v=<?= @filemtime(__DIR__ . '/../assets/js/live-player.js') ?>"></script>
@@ -431,10 +439,25 @@ const qaLists = {}, qaLoading = {};
 function qaLoadList(type) {
     if (qaLists[type]) return Promise.resolve(qaLists[type]);
     return qaLoading[type] || (qaLoading[type] = fetch('/admin/channels.php?type=' + type).then(r => r.json()).then(j => {
-        qaLists[type] = new Map((j.channels || []).map(c => [c.name, c]));
-        document.getElementById('qa-list-' + type).innerHTML = (j.channels || []).map(c => `<option value="${qaEsc(c.name)}">${qaEsc(c.group)}</option>`).join('');
+        qaLists[type] = j.channels || [];
         return qaLists[type];
-    }).catch(() => { delete qaLoading[type]; return new Map(); }));
+    }).catch(() => { delete qaLoading[type]; return []; }));
+}
+// The visible channel list under the search box (a datalist stays hidden in Firefox until you type).
+const qaFold = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function qaRenderList(form) {
+    const box = form.querySelector('.qa-chan-list'), list = qaLists[form.dataset.kind] || [];
+    const q = qaFold(form.querySelector('.qa-chan').value.trim()), cur = form.querySelector('input[name=stream_url]').value.trim();
+    const https = location.protocol === 'https:';
+    const hits = list.filter(c => !q || qaFold(c.name + ' ' + c.group).includes(q));
+    box.innerHTML = hits.map((c, i) => {
+        const blocked = https && /^http:/i.test(c.url);
+        const tag = blocked ? 'http: solo in rete locale' : (/geo-blocked/i.test(c.name) ? 'può non funzionare' : c.group);
+        return `<button type="button" data-i="${list.indexOf(c)}" class="${c.url === cur ? 'sel' : ''}${blocked ? ' blocked' : ''}">`
+            + (c.logo ? `<img src="${qaEsc(c.logo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : '<span class="nl"></span>')
+            + `<span>${qaEsc(c.name)}</span><small>${qaEsc(tag)}</small></button>`;
+    }).join('') || (list.length ? '<p class="qa-note" style="padding:8px 10px;margin:0">Nessun canale trovato: prova un altro nome.</p>' : '');
+    return hits.length;
 }
 function qaStopPreview(form) {
     if (form._preview) { form._preview.stop(); form._preview = null; }
@@ -447,25 +470,34 @@ function qaSetKind(form) {
     form.dataset.kind = k;
     qaStopPreview(form);
     if (k !== 'tv' && k !== 'radio') return;
-    const chan = form.querySelector('.qa-chan'), info = form.querySelector('.qa-chan-info');
-    chan.setAttribute('list', 'qa-list-' + k);
+    const info = form.querySelector('.qa-chan-info');
+    form.querySelector('.qa-chan-list').innerHTML = '';
     info.textContent = 'Carico l\'elenco…';
-    qaLoadList(k).then(list => { info.textContent = list.size ? list.size + (k === 'tv' ? ' canali TV' : ' radio') + ' nell\'elenco' : 'Elenco non disponibile ora: puoi scrivere l\'indirizzo a mano.'; });
+    qaLoadList(k).then(list => {
+        if (form.dataset.kind !== k) return;
+        qaRenderList(form);
+        info.textContent = list.length ? list.length + (k === 'tv' ? ' canali TV' : ' radio') + ' nell\'elenco: tocca un nome per sceglierlo.' : 'Elenco non disponibile ora: puoi scrivere l\'indirizzo a mano.';
+    });
 }
 document.querySelectorAll('form.qa-upload').forEach(form => {
     form.querySelectorAll('input[name=kind]').forEach(r => r.addEventListener('change', () => qaSetKind(form)));
     qaSetKind(form);
     const chan = form.querySelector('.qa-chan'), url = form.querySelector('input[name=stream_url]'), logo = form.querySelector('input[name=stream_logo]');
-    chan.addEventListener('input', () => {
-        const c = (qaLists[form.dataset.kind] || new Map()).get(chan.value);
+    chan.addEventListener('input', () => qaRenderList(form));
+    chan.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+    form.querySelector('.qa-chan-list').addEventListener('click', e => {
+        const b = e.target.closest('button[data-i]');
+        const c = b && (qaLists[form.dataset.kind] || [])[+b.dataset.i];
         if (!c) return;
         url.value = c.url;
         logo.value = c.logo || '';
         const title = form.querySelector('input[name=title]');
         if (!title.value.trim()) title.value = c.name.replace(/\s*[\[(].*$/, '');
+        form.querySelectorAll('.qa-chan-list button.sel').forEach(x => x.classList.remove('sel'));
+        b.classList.add('sel');
         qaStopPreview(form);
     });
-    url.addEventListener('input', () => { logo.value = ''; qaStopPreview(form); });
+    url.addEventListener('input', () => { logo.value = ''; qaStopPreview(form); qaRenderList(form); });
     form.querySelector('.qa-try').addEventListener('click', () => {
         if (form._preview) return qaStopPreview(form);
         const box = form.querySelector('.qa-preview'), btn = form.querySelector('.qa-try');
