@@ -42,8 +42,10 @@ function queueSettings(): array
         'printer_port'  => 9100,
         'printer_width' => 48,
     ];
-    if ($cfg['key'] === '') {
-        $cfg['key'] = bin2hex(random_bytes(12));
+    $cfg += ['op_key' => ''];
+    if ($cfg['key'] === '' || $cfg['op_key'] === '') {
+        if ($cfg['key'] === '') $cfg['key'] = bin2hex(random_bytes(12));
+        if ($cfg['op_key'] === '') $cfg['op_key'] = bin2hex(random_bytes(16));
         setSetting('queue', $cfg);
     }
     return $memo = $cfg;
@@ -54,6 +56,13 @@ function queueKeyOk(?string $key): bool
 {
     $cfg = queueSettings();
     return $key !== null && $key !== '' && hash_equals((string) $cfg['key'], $key);
+}
+
+/** Does the operator key (?ok=, for another server) allow calling numbers without a login? */
+function queueOpKeyOk(?string $key): bool
+{
+    $cfg = queueSettings();
+    return $key !== null && $key !== '' && hash_equals((string) $cfg['op_key'], $key);
 }
 
 /** "A" + 7 → "A007" (a service without a letter shows just the number). */

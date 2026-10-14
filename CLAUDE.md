@@ -7,7 +7,9 @@ at the user's request. Integrating it into other projects is a later decision of
 
 ## What is in it
 - `queue/totem.php`, `queue/monitor.php` (no login, `?k=` = `settings.queue.key`), `queue/operator.php`.
-- `api/queue.php` — state, feed (weather/news/tiles), take, next/recall/call.
+- `api/queue.php` — state, feed (weather/news/tiles), take, next/recall/call. next/recall/call also work
+  without a login (GET or POST) with `?ok=` = `settings.queue.op_key`, for another server; the links are in
+  Amministrazione › Eliminacode › "Link operatore per un altro server" (`called_by` stays NULL).
 - `admin/index.php` (Eliminacode admin), `admin/users.php`, `admin/activity.php`.
 - Monitor tiles (`queue_slides`) take a photo or a video (`video_path`, MP4/WebM/MOV up to
   `QUEUE_VIDEO_MAX_MB` = 200, limits raised in `.htaccess`). The monitor downloads each video in full as a blob

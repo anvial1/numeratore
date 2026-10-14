@@ -10,6 +10,8 @@
  * POST {action: take, k, service_id}   → new ticket (printed on the network printer
  *                                        if configured; printed:false = print in the browser)
  * POST {action: next|recall|call, service_id[, number]}  (staff)
+ * GET|POST action=next|recall|call&service_id=&number=&ok=<settings.queue.op_key>
+ *                                      → the same without a login, for another server
  */
 
 require_once __DIR__ . '/../includes/functions.php';
@@ -23,11 +25,12 @@ $action = (string) ($input['action'] ?? 'state');
 $key    = (string) ($input['k'] ?? $_GET['k'] ?? '');
 $screen = queueKeyOk($key);
 $staff  = isLoggedIn() && hasRole(QUEUE_OPERATOR_ROLES);
+$remote = queueOpKeyOk((string) ($input['ok'] ?? $_GET['ok'] ?? ''));
 
 try {
     switch ($action) {
         case 'state':
-            if (!$screen && !$staff) {
+            if (!$screen && !$staff && !$remote) {
                 jsonResponse(['success' => false, 'message' => 'Unauthorized'], 401);
             }
             jsonResponse(['success' => true, 'now' => date('H:i')] + queueState());
@@ -69,11 +72,11 @@ try {
         case 'next':
         case 'recall':
         case 'call':
-            if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$staff) {
+            if (!$remote && ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$staff)) {
                 jsonResponse(['success' => false, 'message' => 'Unauthorized'], 401);
             }
             $sid = (int) ($input['service_id'] ?? 0);
-            $uid = (int) $_SESSION['user_id'];
+            $uid = $staff ? (int) $_SESSION['user_id'] : null;
             if ($action === 'recall') {
                 $t = queueRecall($sid, $uid);
                 $msg = 'Nessun numero da richiamare';

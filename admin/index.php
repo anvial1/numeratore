@@ -133,6 +133,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $back('Nuovi link generati: aggiorna l\'indirizzo sul totem e sul monitor.', 'links');
     }
 
+    if ($action === 'new_op_key') {
+        $cfg['op_key'] = bin2hex(random_bytes(16));
+        setSetting('queue', $cfg);
+        logActivity('queue_op_key_regenerated', 'settings', null, null);
+        $back('Nuova chiave operatore generata: aggiorna i link sull\'altro server.', 'remote');
+    }
+
     if ($action === 'reset_today') {
         queueReset((int) ($_POST['service_id'] ?? 0) ?: null);
         logActivity('queue_reset', 'queue_service', (int) ($_POST['service_id'] ?? 0) ?: null, null);
@@ -202,6 +209,36 @@ include __DIR__ . '/../includes/header.php';
         <form method="POST" class="mt-md" onsubmit="return confirm('I link attuali del totem e del monitor smetteranno di funzionare. Continuare?')">
             <input type="hidden" name="action" value="new_key">
             <button class="btn btn-outline"><i class="fas fa-rotate"></i> Genera nuovi link</button>
+        </form>
+    </div>
+</div>
+
+<div class="card mt-lg" id="remote">
+    <div class="card-header"><h2><i class="fas fa-server"></i> Link operatore per un altro server</h2></div>
+    <div class="card-body">
+        <p class="qa-note">Chiamano i numeri senza accesso, come i pulsanti della pagina operatore: basta aprirli (GET) o inviarli (POST). Rispondono in JSON (<code>"success":true, "called":"A015"</code>). Chi ha questi link può chiamare i numeri: dalli solo al server che li usa.</p>
+        <?php $api = $base . '/api/queue.php?ok=' . $cfg['op_key']; ?>
+        <?php foreach ($services as $s): $sid = (int) $s['id']; ?>
+            <?php foreach ([
+                ['Avanti', 'fa-forward', "$api&action=next&service_id=$sid"],
+                ['Richiama', 'fa-rotate-left', "$api&action=recall&service_id=$sid"],
+                ['Chiama numero (cambia 1 con il numero)', 'fa-hashtag', "$api&action=call&service_id=$sid&number=1"],
+            ] as [$what, $icon, $url]): ?>
+                <div class="qa-link">
+                    <span class="t"><i class="fas <?= $icon ?>"></i> <?= $v(trim($s['letter'] . ' ' . $s['name'])) ?> — <?= $v($what) ?></span>
+                    <input type="text" class="form-control" readonly value="<?= $v($url) ?>" onclick="this.select()">
+                    <button type="button" class="btn btn-outline" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copiato'">Copia</button>
+                </div>
+            <?php endforeach; ?>
+        <?php endforeach; ?>
+        <div class="qa-link">
+            <span class="t"><i class="fas fa-circle-info"></i> Situazione (tutti i reparti)</span>
+            <input type="text" class="form-control" readonly value="<?= $v("$api&action=state") ?>" onclick="this.select()">
+            <button type="button" class="btn btn-outline" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copiato'">Copia</button>
+        </div>
+        <form method="POST" class="mt-md" onsubmit="return confirm('I link operatore attuali smetteranno di funzionare. Continuare?')">
+            <input type="hidden" name="action" value="new_op_key">
+            <button class="btn btn-outline"><i class="fas fa-rotate"></i> Genera nuova chiave operatore</button>
         </form>
     </div>
 </div>
