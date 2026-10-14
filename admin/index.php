@@ -137,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cfg['op_key'] = bin2hex(random_bytes(16));
         setSetting('queue', $cfg);
         logActivity('queue_op_key_regenerated', 'settings', null, null);
-        $back('Nuova chiave operatore generata: aggiorna i link sull\'altro server.', 'remote');
+        $back('Nuova chiave operatore generata: aggiorna i link e i comandi UDP sull\'altro server.', 'remote');
     }
 
     if ($action === 'reset_today') {
@@ -214,32 +214,47 @@ include __DIR__ . '/../includes/header.php';
 </div>
 
 <div class="card mt-lg" id="remote">
-    <div class="card-header"><h2><i class="fas fa-server"></i> Link operatore per un altro server</h2></div>
+    <div class="card-header"><h2><i class="fas fa-server"></i> Comandi operatore per un altro server</h2></div>
     <div class="card-body">
-        <p class="qa-note">Chiamano i numeri senza accesso, come i pulsanti della pagina operatore: basta aprirli (GET) o inviarli (POST). Rispondono in JSON (<code>"success":true, "called":"A015"</code>). Chi ha questi link può chiamare i numeri: dalli solo al server che li usa.</p>
-        <?php $api = $base . '/api/queue.php?ok=' . $cfg['op_key']; ?>
-        <?php foreach ($services as $s): $sid = (int) $s['id']; ?>
-            <?php foreach ([
-                ['Avanti', 'fa-forward', "$api&action=next&service_id=$sid"],
-                ['Richiama', 'fa-rotate-left', "$api&action=recall&service_id=$sid"],
-                ['Chiama numero (cambia 1 con il numero)', 'fa-hashtag', "$api&action=call&service_id=$sid&number=1"],
-            ] as [$what, $icon, $url]): ?>
-                <div class="qa-link">
-                    <span class="t"><i class="fas <?= $icon ?>"></i> <?= $v(trim($s['letter'] . ' ' . $s['name'])) ?> — <?= $v($what) ?></span>
-                    <input type="text" class="form-control" readonly value="<?= $v($url) ?>" onclick="this.select()">
-                    <button type="button" class="btn btn-outline" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copiato'">Copia</button>
-                </div>
-            <?php endforeach; ?>
-        <?php endforeach; ?>
-        <div class="qa-link">
-            <span class="t"><i class="fas fa-circle-info"></i> Situazione (tutti i reparti)</span>
-            <input type="text" class="form-control" readonly value="<?= $v("$api&action=state") ?>" onclick="this.select()">
-            <button type="button" class="btn btn-outline" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copiato'">Copia</button>
-        </div>
-        <p class="qa-note mt-md"><strong>Comandi UDP</strong> (se il servizio <code>eliminacode-udp</code> è attivo sul server): un pacchetto alla porta 9999 con il testo
-            <code><?= $v($cfg['op_key']) ?> next 1</code>, <code>… recall 1</code>, <code>… call 1 15</code> o <code>… state</code>
-            (al posto di 1 va bene anche la lettera del servizio). Risponde al mittente in JSON.</p>
-        <form method="POST" class="mt-md" onsubmit="return confirm('I link operatore attuali smetteranno di funzionare. Continuare?')">
+        <?php
+        $api  = $base . '/api/queue.php?ok=' . $cfg['op_key'];
+        $udp  = $cfg['op_key'];
+        $host = parse_url($base, PHP_URL_HOST);
+        $row  = static function (string $icon, string $label, string $value) use ($v): void { ?>
+            <div class="qa-link">
+                <span class="t"><i class="fas <?= $icon ?>"></i> <?= $v($label) ?></span>
+                <input type="text" class="form-control" readonly value="<?= $v($value) ?>" onclick="this.select()">
+                <button type="button" class="btn btn-outline" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copiato'">Copia</button>
+            </div>
+        <?php };
+        $commands = static function (callable $make) use ($services, $row): void {
+            foreach ($services as $s) {
+                $sid  = (int) $s['id'];
+                $name = trim($s['letter'] . ' ' . $s['name']);
+                $row('fa-forward', "$name — Avanti", $make('next', $sid, null));
+                $row('fa-rotate-left', "$name — Richiama", $make('recall', $sid, null));
+                $row('fa-hashtag', "$name — Chiama numero (cambia 1 con il numero)", $make('call', $sid, 1));
+            }
+            $row('fa-circle-info', 'Situazione (tutti i reparti)', $make('state', null, null));
+        };
+        ?>
+        <p class="qa-note">Servono a un altro server per chiamare i numeri senza accesso, come i pulsanti della pagina operatore: <strong>Avanti</strong> chiama il prossimo in attesa,
+            <strong>Richiama</strong> ripete il numero attuale sul monitor, <strong>Chiama numero</strong> chiama un numero preciso dei biglietti di oggi, <strong>Situazione</strong> dice i numeri in servizio e quanti aspettano.
+            Il monitor suona e annuncia il numero come sempre. Contengono la chiave operatore: chi li ha può chiamare i numeri, quindi dalli solo al server che li usa.</p>
+
+        <h3 class="mt-md"><i class="fas fa-globe"></i> Link web (HTTP)</h3>
+        <p class="qa-note">L'altro server apre il link (GET) o lo invia (POST). Risponde in JSON: <code>{"success":true,"called":"A015"}</code>, oppure <code>"success":false</code> con il motivo (es. "Nessuno in attesa").</p>
+        <?php $commands(static fn($a, $sid, $n) => "$api&action=$a" . ($sid ? "&service_id=$sid" : '') . ($n ? "&number=$n" : '')); ?>
+
+        <h3 class="mt-lg"><i class="fas fa-satellite-dish"></i> Comandi UDP</h3>
+        <p class="qa-note">L'altro server manda un pacchetto UDP con il testo del comando a <strong><?= $v($host) ?></strong>, porta <strong><?= QUEUE_UDP_PORT ?></strong>
+            (servizio <code>eliminacode-udp</code>, deve essere attivo su questo server). Il formato è <code>chiave comando reparto [numero]</code>:
+            al posto del numero del reparto va bene anche la sua lettera (<code>next A</code>), e le parole si possono separare con spazi, <code>;</code> o <code>,</code>.
+            Si può mandare anche in JSON: <code>{"ok":"chiave","action":"next","service_id":1}</code>. La risposta torna al mittente in JSON, come per i link web.</p>
+        <?php $row('fa-network-wired', 'Indirizzo e porta', $host . ':' . QUEUE_UDP_PORT); ?>
+        <?php $commands(static fn($a, $sid, $n) => trim("$udp $a $sid $n")); ?>
+
+        <form method="POST" class="mt-md" onsubmit="return confirm('I link e i comandi UDP attuali smetteranno di funzionare. Continuare?')">
             <input type="hidden" name="action" value="new_op_key">
             <button class="btn btn-outline"><i class="fas fa-rotate"></i> Genera nuova chiave operatore</button>
         </form>

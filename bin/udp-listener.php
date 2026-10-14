@@ -12,7 +12,7 @@
  * <service> = the service id (1) or its letter (A). Words may be separated by
  * spaces, ";" or ",". The reply goes back to the sender as JSON, e.g.
  * {"success":true,"called":"A015"}. op_key = settings.queue.op_key
- * (Amministrazione › Eliminacode › Link operatore per un altro server).
+ * (Amministrazione › Eliminacode › Comandi operatore per un altro server).
  *
  * Runs as a service: bin/eliminacode-udp.service (port 9999 by default, or the first argument).
  */
@@ -20,7 +20,7 @@ if (PHP_SAPI !== 'cli') exit;
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/queue.php';
 
-$port = (int) ($argv[1] ?? 9999);
+$port = (int) ($argv[1] ?? QUEUE_UDP_PORT);
 $sock = stream_socket_server("udp://0.0.0.0:$port", $errno, $errstr, STREAM_SERVER_BIND);
 if (!$sock) {
     fwrite(STDERR, "udp-listener: cannot bind port $port: $errstr\n");

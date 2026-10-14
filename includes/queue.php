@@ -16,6 +16,8 @@ require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/ThermalPrinter.php';
 
 const QUEUE_NEWS_DEFAULT = 'https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml';
+/** UDP port of bin/udp-listener.php (bin/eliminacode-udp.service). */
+const QUEUE_UDP_PORT = 9999;
 /** Staff roles that may call numbers from the operator page. */
 const QUEUE_OPERATOR_ROLES = ['admin', 'operator'];
 
