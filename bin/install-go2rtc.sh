@@ -12,6 +12,10 @@ if ! /usr/local/bin/go2rtc -version 2>/dev/null | grep -q "$VER"; then
 fi
 mkdir -p /etc/go2rtc
 cp "$APP/bin/go2rtc.yaml" /etc/go2rtc/go2rtc.yaml
+# go2rtc saves the streams added through its API here (camera passwords): only its user may read it.
+chown -R www-data:www-data /etc/go2rtc
+chmod 700 /etc/go2rtc
+chmod 600 /etc/go2rtc/go2rtc.yaml
 
 a2enmod -q proxy proxy_http proxy_wstunnel
 cp "$APP/bin/apache-go2rtc.conf" /etc/apache2/conf-available/eliminacode-go2rtc.conf

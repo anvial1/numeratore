@@ -1,7 +1,8 @@
 # Eliminacode: go2rtc (IP cameras → browser), LAN server only. Copied to /etc/go2rtc/go2rtc.yaml by bin/install-go2rtc.sh.
 # Listens only on localhost: the monitor reaches it through Apache (bin/apache-go2rtc.conf), which lets
-# through only the stream websocket of the cameras' own names. The streams themselves are not here:
-# bin/cameras-sync.php loads them from the "Telecamera" tiles (with their passwords) at every start.
+# through only the stream websocket of the cameras' own names. The streams come from the "Telecamera"
+# tiles: bin/cameras-sync.php loads them at every start and go2rtc saves them into the server's copy
+# of this file (owner www-data, mode 600: it holds the camera passwords).
 api:
   listen: "127.0.0.1:1984"
 rtsp:
