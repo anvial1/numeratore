@@ -7,6 +7,7 @@
  *   <op_key> recall <service>            → calls the current number again
  *   <op_key> call <service> <number>     → calls that number
  *   <op_key> state                       → numbers being served, waiting
+ *   <op_key> reset [<service>]           → today's queue cleared, numbering from 1 (no service = all)
  *   or JSON: {"ok":"<op_key>","action":"next","service_id":1[,"number":15]}
  *
  * <service> = the service id (1) or its letter (A). Words may be separated by
@@ -64,6 +65,16 @@ while (true) {
             $out = ['success' => false, 'message' => 'Unauthorized'];
         } elseif ($action === 'state') {
             $out = ['success' => true] + queueState();
+        } elseif ($action === 'reset') {
+            $all = $svc === '' || in_array(strtolower($svc), ['0', 'all', 'tutti'], true);
+            $sid = $all ? null : $serviceId($svc);
+            if (!$all && !queueService($sid)) { // an unknown service never resets them all
+                $out = ['success' => false, 'message' => 'Servizio non trovato'];
+            } else {
+                queueReset($sid);
+                logActivity('queue_reset', 'queue_service', $sid, ['from' => 'udp ' . preg_replace('/:\d+$/', '', $peer)]);
+                $out = ['success' => true, 'reset' => $sid ?? 'all'];
+            }
         } elseif (in_array($action, ['next', 'recall', 'call'], true)) {
             $sid = $serviceId($svc);
             $t = match ($action) {
@@ -85,6 +96,6 @@ while (true) {
         }
     }
     $peerIp = preg_replace('/:\d+$/', '', $peer);
-    echo date('Y-m-d H:i:s') . " $peerIp $action $svc → " . ($out['called'] ?? $out['message'] ?? 'ok') . "\n";
+    echo date('Y-m-d H:i:s') . " $peerIp $action $svc → " . ($out['called'] ?? $out['message'] ?? (isset($out['reset']) ? 'reset' : 'ok')) . "\n";
     stream_socket_sendto($sock, json_encode($out, JSON_UNESCAPED_UNICODE), 0, $peer);
 }

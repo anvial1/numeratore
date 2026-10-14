@@ -12,6 +12,8 @@
  * POST {action: next|recall|call, service_id[, number]}  (staff)
  * GET|POST action=next|recall|call&service_id=&number=&ok=<settings.queue.op_key>
  *                                      → the same without a login, for another server
+ * GET|POST action=reset[&service_id=]&ok=  → today's queue of one service (or all) cleared:
+ *                                        the next ticket is number 1 again (operator key only)
  */
 
 require_once __DIR__ . '/../includes/functions.php';
@@ -91,6 +93,18 @@ try {
                 jsonResponse(['success' => false, 'message' => $msg] + queueState());
             }
             jsonResponse(['success' => true, 'called' => $t['label']] + queueState());
+
+        case 'reset':
+            if (!$remote) {
+                jsonResponse(['success' => false, 'message' => 'Unauthorized'], 401);
+            }
+            $sid = (int) ($input['service_id'] ?? 0) ?: null;
+            if ($sid && !queueService($sid)) {
+                jsonResponse(['success' => false, 'message' => 'Servizio non trovato'] + queueState());
+            }
+            queueReset($sid);
+            logActivity('queue_reset', 'queue_service', $sid, ['from' => 'remote']);
+            jsonResponse(['success' => true, 'reset' => $sid ?? 'all'] + queueState());
 
         default:
             jsonResponse(['success' => false, 'message' => 'Unknown action'], 400);

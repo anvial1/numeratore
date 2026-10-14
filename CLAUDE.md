@@ -7,7 +7,7 @@ at the user's request. Integrating it into other projects is a later decision of
 
 ## What is in it
 - `queue/totem.php`, `queue/monitor.php` (no login, `?k=` = `settings.queue.key`), `queue/operator.php`.
-- `api/queue.php` — state, feed (weather/news/tiles), take, next/recall/call. next/recall/call also work
+- `api/queue.php` — state, feed (weather/news/tiles), take, next/recall/call. next/recall/call (and reset, key only) also work
   without a login (GET or POST) with `?ok=` = `settings.queue.op_key`, for another server; the links are in
   Amministrazione › Eliminacode › "Comandi operatore per un altro server" (`called_by` stays NULL).
 - `bin/udp-listener.php` — the same commands over UDP (port 9999, `<op_key> next 1`, or JSON), run by the
