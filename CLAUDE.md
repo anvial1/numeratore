@@ -13,6 +13,10 @@ at the user's request. Integrating it into other projects is a later decision of
 - `bin/udp-listener.php` — the same commands over UDP (port 9999, `<op_key> next 1`, or JSON), run by the
   systemd unit `bin/eliminacode-udp.service`. Installed only on the LAN server 192.168.1.63, not on
   production. After changing the listener: `systemctl restart eliminacode-udp` there.
+- TV on the LAN server's own video output (HP EliteDesk mini, DisplayPort/HDMI): `bin/eliminacode-kiosk.service`
+  runs `bin/monitor-kiosk.sh` (Chrome .deb `--kiosk` inside `cage`, user `monitor`, tty1, sound via pipewire)
+  on http://localhost/queue/monitor.php. Waits until a screen is plugged in. Set up once with
+  `bin/install-kiosk.sh`; LAN server only. Reload the screen: `systemctl restart eliminacode-kiosk`.
 - `admin/index.php` (Eliminacode admin), `admin/users.php`, `admin/activity.php`.
 - Monitor tiles (`queue_slides`) take a photo or a video (`video_path`, MP4/WebM/MOV up to
   `QUEUE_VIDEO_MAX_MB` = 200, limits raised in `.htaccess`). The monitor downloads each video in full as a blob

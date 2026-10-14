@@ -1,6 +1,6 @@
 # Eliminacode: the monitor on the server's own TV output (bin/monitor-kiosk.sh in cage, user "monitor", tty1).
 # Install (LAN server only): see bin/install-kiosk.sh
-# Restart the screen: systemctl restart eliminacode-kiosk
+# Restart the screen: systemctl restart eliminacode-kiosk (it waits until a TV is plugged in)
 [Unit]
 Description=Eliminacode monitor on the TV output
 After=systemd-user-sessions.service plymouth-quit-wait.service apache2.service mariadb.service

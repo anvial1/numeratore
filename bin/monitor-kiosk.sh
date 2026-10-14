@@ -4,6 +4,9 @@
 # Sound on from the start (--autoplay-policy), own profile, restarted by systemd if it closes.
 APP=/var/www/html/eliminacode
 
+# Wait for a TV on HDMI / DisplayPort (Chrome stalls on a screen with no output).
+until grep -qx connected /sys/class/drm/card*-*/status 2>/dev/null; do sleep 3; done
+
 # Wait for Apache + MariaDB after a power cut.
 i=0
 until curl -fs -o /dev/null http://localhost/login.php || [ $i -ge 60 ]; do i=$((i + 1)); sleep 2; done

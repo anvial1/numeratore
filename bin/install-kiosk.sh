@@ -11,7 +11,7 @@ if ! command -v google-chrome >/dev/null; then
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
 fi
 apt-get update -q
-apt-get install -y -q cage google-chrome-stable pipewire pipewire-pulse wireplumber fonts-dejavu fonts-noto-color-emoji
+apt-get install -y -q cage google-chrome-stable pipewire pipewire-pulse wireplumber pulseaudio-utils fonts-dejavu fonts-noto-color-emoji
 
 id monitor >/dev/null 2>&1 || useradd -m -s /usr/sbin/nologin monitor
 usermod -aG video,render,audio,input monitor
