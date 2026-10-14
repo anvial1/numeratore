@@ -52,6 +52,7 @@ try {
                 'stream'   => (string) ($s['stream_url'] ?? ''),
                 'logo'     => (string) ($s['stream_logo'] ?? ''),
                 'live_secs' => (int) ($s['stream_seconds'] ?? 60),
+                'bg'       => ($s['stream_type'] ?? '') === 'radio' && !empty($s['stream_background']),
             ], queueSlides());
             jsonResponse([
                 'success' => true,

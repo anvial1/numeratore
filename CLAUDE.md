@@ -24,7 +24,8 @@ at the user's request. Integrating it into other projects is a later decision of
   A tile can also be a live TV channel or a radio (`stream_type`/`stream_url`/`stream_logo`/`stream_seconds`):
   picked from `admin/channels.php` (Italian lists from iptv-org and radio-browser, cached 1 day) or a pasted
   .m3u8 / MP3 / YouTube link, played by `assets/js/live-player.js` (hls.js from cdnjs); "Prova" in the admin.
-  Only the tile on screen streams; a channel that fails is skipped for 2 min. On the https site http://
+  A radio can instead be background music (`stream_background`, one at a time): not a tile, it plays all the
+  time while the tiles rotate, quiet during a call and on tiles with their own sound. Only the tile on screen streams; a channel that fails is skipped for 2 min. On the https site http://
   streams are blocked by the browser (mixed content); the LAN server is http, so they play there.
 - `admin/monitor-launcher.php`: downloads "Monitor eliminacode.bat" (Chrome/Edge kiosk with
   `--autoplay-policy=no-user-gesture-required`, own profile) so the monitor's sound is on without a click.

@@ -93,6 +93,11 @@ html,body { margin:0; height:100%; background:linear-gradient(160deg,#0c4a6e 0%,
 .slides .dots { position:absolute; bottom:1.2vh; right:1.4vw; display:flex; gap:.5vw; }
 .slides .dots i { width:1vh; height:1vh; border-radius:50%; background:rgba(255,255,255,.35); }
 .slides .dots i.on { background:#fff; }
+.bgradio { position:absolute; top:1.6vh; left:1.2vw; z-index:2; display:flex; align-items:center; gap:.7vw; max-width:60%; font-size:2vh; font-weight:700; background:rgba(0,0,0,.55); padding:.6vh 1.1vw; border-radius:999px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bgradio .eq { display:flex; align-items:flex-end; gap:.2vw; height:1.8vh; flex:none; }
+.bgradio .eq i { width:.3vw; background:#fff; border-radius:2px; animation:eq 1s ease-in-out infinite; }
+.bgradio .eq i:nth-child(2) { animation-delay:-.3s; } .bgradio .eq i:nth-child(3) { animation-delay:-.6s; }
+.bgradio.quiet .eq i { animation:none; height:30%; }
 .placeholder { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:3vh; text-align:center; padding:2vw; }
 
 .forecast { display:grid; grid-template-columns:repeat(4,1fr); gap:1vw; }
@@ -293,7 +298,8 @@ function renderSlides() {
             ${s.live === 'radio' ? `<div class="onair">${s.logo && !s.image ? `<img src="${esc(s.logo)}" alt="" onerror="this.remove()">` : ''}<div class="lbl"><span class="eq"><i></i><i></i><i></i><i></i></span>IN ONDA</div></div>` : ''}
             ${s.price ? `<div class="price">${esc(s.price)}</div>` : ''}
             ${s.title || s.subtitle ? `<div class="cap">${s.title ? `<div class="ttl">${esc(s.title)}</div>` : ''}${s.subtitle ? `<div class="stl">${esc(s.subtitle)}</div>` : ''}</div>` : ''}
-        </div>`).join('') + (slides.length > 1 ? '<div class="dots">' + slides.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') + '</div>' : '');
+        </div>`).join('') + (slides.length > 1 ? '<div class="dots">' + slides.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') + '</div>' : '')
+        + (bgRadio ? `<div class="bgradio" id="bgradio"><span class="eq"><i></i><i></i><i></i></span>${esc(bgRadio.title || 'Radio')}</div>` : '');
     slides.forEach(s => { if (s.video) { if (videoBlobs[s.video] && videoBlobs[s.video].url) attachVideo(s.video); else preloadVideo(s.video); } });
     showSlide(0);
 }
@@ -313,11 +319,39 @@ const liveFailed = {};
 function stopLive() { if (live) { live.stop(); live = null; } }
 /** After the first touch / key (sound unlocked) the tile on screen gets its sound back. */
 function unmuteTile() {
+    bgSync();
     const s = slides[slideIdx];
     if (!s || !s.audio || Date.now() < callMuteUntil) return;
     if (live) live.mute(false);
     const v = document.querySelectorAll('.slide')[slideIdx]?.querySelector('video.vid');
     if (v && v.src) { v.muted = false; v.play().catch(() => {}); }
+}
+/*
+ * Background radio (a radio tile set as "musica di sottofondo"): it plays all the time while the
+ * tiles rotate, quiet during a call and while the tile on screen has its own sound.
+ */
+let bgRadio = null, bgLive = null, bgUrl = '', bgRetry = null;
+const bgBox = document.createElement('div');
+bgBox.style.display = 'none';
+document.body.appendChild(bgBox);
+function bgQuiet() {
+    const s = slides[slideIdx];
+    return Date.now() < callMuteUntil || !!(s && s.audio);
+}
+function bgSync() {
+    const quiet = bgQuiet(), badge = document.getElementById('bgradio');
+    if (badge) badge.classList.toggle('quiet', quiet);
+    if (bgLive) bgLive.mute(quiet);
+}
+function bgStart() {
+    clearTimeout(bgRetry);
+    if (bgLive) { bgLive.stop(); bgLive = null; }
+    bgUrl = bgRadio ? bgRadio.stream : '';
+    if (!bgUrl) return;
+    bgLive = livePlay(bgBox, bgUrl, {
+        radio: true, muted: bgQuiet(), timeout: 30000,
+        onFail: () => { bgLive = null; bgRetry = setTimeout(bgStart, 60000); }, // try again in a minute
+    });
 }
 function showSlide(i) {
     clearTimeout(slideTimer);
@@ -326,6 +360,7 @@ function showSlide(i) {
     for (let n = 0; n < els.length && !ready(els[i], i); n++) i = (i + 1) % els.length;
     slideIdx = i;
     stopLive();
+    bgSync();
     els.forEach((el, k) => {
         el.classList.toggle('on', k === i);
         if (dots[k]) dots[k].classList.toggle('on', k === i);
@@ -374,8 +409,10 @@ function muteVideosForCall() {
     callMuteUntil = Date.now() + 7000;
     document.querySelectorAll('.slide video.vid').forEach(v => v.muted = true);
     if (live) live.mute(true);
+    bgSync();
     setTimeout(() => {
         if (Date.now() < callMuteUntil) return;
+        bgSync();
         const s = slides[slideIdx];
         if (!s || !s.audio) return;
         if (live) live.mute(false);
@@ -430,7 +467,14 @@ async function feed() {
         renderWeather(j.weather);
         renderNews(j.news || []);
         const sig = JSON.stringify(j.slides) + j.seconds;
-        if (sig !== slidesSig) { slidesSig = sig; slides = j.slides; slideSecs = j.seconds; renderSlides(); }
+        if (sig !== slidesSig) {
+            slidesSig = sig;
+            bgRadio = j.slides.find(s => s.bg) || null;
+            slides = j.slides.filter(s => !s.bg);
+            slideSecs = j.seconds;
+            renderSlides();
+            if ((bgRadio ? bgRadio.stream : '') !== bgUrl) bgStart();
+        }
     } catch (e) {}
 }
 

@@ -92,17 +92,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $audio = isset($_POST['video_audio']) ? 1 : 0;
         $logo  = $live ? queueStreamUrl($_POST['stream_logo'] ?? '') : null;
         $secs  = max(10, min(3600, (int) ($_POST['stream_seconds'] ?? 60)));
-        $cols  = [$title, $sub, $price, $image, $video, $audio, $live ? $kind : null, $stream, $logo, $secs, $sort, $act];
+        $bg    = $kind === 'radio' && ($_POST['radio_mode'] ?? '') === 'bg' ? 1 : 0;
+        $cols  = [$title, $sub, $price, $image, $video, $audio, $live ? $kind : null, $stream, $logo, $secs, $bg, $sort, $act];
         if ($action === 'add_slide') {
-            $pdo->prepare("INSERT INTO queue_slides (title, subtitle, price, image_path, video_path, video_audio, stream_type, stream_url, stream_logo, stream_seconds, sort_order, active)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")->execute($cols);
+            $pdo->prepare("INSERT INTO queue_slides (title, subtitle, price, image_path, video_path, video_audio, stream_type, stream_url, stream_logo, stream_seconds, stream_background, sort_order, active)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")->execute($cols);
+            $id = (int) $pdo->lastInsertId();
         } else {
             $pdo->prepare("UPDATE queue_slides SET title = ?, subtitle = ?, price = ?, image_path = ?, video_path = ?, video_audio = ?,
-                           stream_type = ?, stream_url = ?, stream_logo = ?, stream_seconds = ?, sort_order = ?, active = ? WHERE id = ?")
+                           stream_type = ?, stream_url = ?, stream_logo = ?, stream_seconds = ?, stream_background = ?, sort_order = ?, active = ? WHERE id = ?")
                 ->execute([...$cols, $id]);
         }
+        // Only one background radio at a time.
+        if ($bg && $act) $pdo->prepare("UPDATE queue_slides SET stream_background = 0 WHERE id <> ? AND stream_background = 1")->execute([$id]);
         $back($vid ? 'Video caricato: il monitor lo scarica e lo mostra entro 5 minuti.'
-            : ($live ? 'Riquadro salvato: il monitor lo mostra entro 5 minuti.' : 'Riquadro salvato.'), 'slides');
+            : ($bg ? 'Radio di sottofondo salvata: il monitor la fa suonare mentre scorrono le foto, entro 5 minuti.'
+            : ($live ? 'Riquadro salvato: il monitor lo mostra entro 5 minuti.' : 'Riquadro salvato.')), 'slides');
     }
 
     if ($action === 'save_settings') {
@@ -200,6 +205,7 @@ include __DIR__ . '/../includes/header.php';
 .qa-upload[data-kind=photo] .kf.photo, .qa-upload[data-kind=video] .kf.video, .qa-upload[data-kind=tv] .kf.tv, .qa-upload[data-kind=radio] .kf.radio { display:revert; }
 .qa-live { border-left:3px solid var(--primary, #0284c7); padding-left:12px; margin-bottom:8px; }
 .qa-chan-info { font-size:.8rem; color:var(--text-secondary); }
+.qa-radio-mode { display:flex; gap:8px; flex-wrap:wrap; margin:4px 0 10px; }.qa-upload[data-kind=radio]:has(input[name=radio_mode][value=bg]:checked) .qa-secs { display:none; }
 .qa-chan-list { max-height:260px; overflow-y:auto; border:1px solid var(--border-color, #ddd); border-radius:8px; margin-top:6px; background:#fff; color:var(--text-primary, #0c3b56); }
 .qa-chan-list:empty { display:none; }
 .qa-chan-list button { display:flex; gap:10px; align-items:center; width:100%; padding:6px 10px; border:0; border-bottom:1px solid #eef2f5; background:#fff; text-align:left; cursor:pointer; color:var(--text-primary, #0c3b56); font:inherit; }
@@ -367,8 +373,13 @@ $slideFields = static function (?array $s) use ($v, $slides): void {
             </div>
         </div>
         <input type="hidden" name="stream_logo" value="<?= $v($s['stream_logo'] ?? '') ?>">
+        <?php $bg = $s ? !empty($s['stream_background']) : true; ?>
+        <div class="kf radio qa-radio-mode">
+            <label class="qa-kind"><input type="radio" name="radio_mode" value="bg" <?= $bg ? 'checked' : '' ?>> <i class="fas fa-music"></i> Musica di sottofondo: suona sempre mentre scorrono le foto</label>
+            <label class="qa-kind"><input type="radio" name="radio_mode" value="tile" <?= $bg ? '' : 'checked' ?>> <i class="fas fa-radio"></i> Riquadro a sé (logo e scritta "In onda")</label>
+        </div>
         <div class="form-row" style="align-items:flex-end">
-            <div class="form-group" style="max-width:190px"><label class="form-label">Secondi sul monitor</label><input type="number" name="stream_seconds" min="10" max="3600" class="form-control" value="<?= (int) ($s['stream_seconds'] ?? 60) ?>"></div>
+            <div class="form-group qa-secs" style="max-width:190px"><label class="form-label">Secondi sul monitor</label><input type="number" name="stream_seconds" min="10" max="3600" class="form-control" value="<?= (int) ($s['stream_seconds'] ?? 60) ?>"></div>
             <div class="form-group"><button type="button" class="btn btn-outline qa-try"><i class="fas fa-play"></i> Prova</button></div>
         </div>
         <div class="qa-preview"></div>
@@ -397,7 +408,7 @@ $slideFields = static function (?array $s) use ($v, $slides): void {
             <li><strong>Foto</strong>: orizzontale (es. 1600×1000), resta per i secondi impostati in "Monitor" più sotto.</li>
             <li><strong>Video</strong>: MP4 H.264 o WebM orizzontale, massimo <?= QUEUE_VIDEO_MAX_MB ?> MB. Il monitor lo scarica per intero e lo riproduce fino alla fine.</li>
             <li><strong>TV in diretta</strong>: scegli un canale dall'elenco dei canali italiani online, oppure incolla l'indirizzo di uno streaming (.m3u8) o un link YouTube di una diretta.</li>
-            <li><strong>Radio</strong>: scegli una stazione dall'elenco delle radio italiane o incolla l'indirizzo dello streaming; sul monitor si vede il logo con la scritta "In onda".</li>
+            <li><strong>Radio</strong>: scegli una stazione dall'elenco delle radio italiane o incolla l'indirizzo dello streaming. Come <strong>musica di sottofondo</strong> suona sempre mentre scorrono le foto (si abbassa da sola durante le chiamate e sui video o TV con audio); come <strong>riquadro a sé</strong> sul monitor si vede il logo con la scritta "In onda".</li>
         </ul>
         <p class="qa-note">TV e radio restano sul monitor per i secondi che scegli, poi si passa al riquadro successivo; se c'è un solo riquadro restano sempre. Il loro audio si abbassa da solo quando viene chiamato un numero.
             Gli elenchi vengono da fonti pubbliche e alcuni canali possono essere spenti o non funzionare nel browser: premi <strong>Prova</strong> prima di salvare. Se un canale non parte, il monitor passa al riquadro successivo.
@@ -410,7 +421,7 @@ $slideFields = static function (?array $s) use ($v, $slides): void {
                         <video class="qa-thumb" src="<?= $v($s['video_path']) ?>#t=1" muted preload="metadata" playsinline></video>
                     <?php elseif ($s['image_path'] || $s['stream_logo']): ?><img class="qa-thumb<?= $s['image_path'] ? '' : ' qa-logo' ?>" src="<?= $v($s['image_path'] ?: $s['stream_logo']) ?>" alt="">
                     <?php else: ?><span class="qa-thumb"></span><?php endif; ?>
-                    <span class="qa-badge"><i class="fas <?= ['photo' => 'fa-image', 'video' => 'fa-film', 'tv' => 'fa-tv', 'radio' => 'fa-radio'][$kind] ?>"></i> <?= ['photo' => 'Foto', 'video' => 'Video', 'tv' => 'TV in diretta', 'radio' => 'Radio'][$kind] ?></span>
+                    <span class="qa-badge"><?php if ($kind === 'radio' && $s['stream_background']): ?><i class="fas fa-music"></i> Radio di sottofondo<?php else: ?><i class="fas <?= ['photo' => 'fa-image', 'video' => 'fa-film', 'tv' => 'fa-tv', 'radio' => 'fa-radio'][$kind] ?>"></i> <?= ['photo' => 'Foto', 'video' => 'Video', 'tv' => 'TV in diretta', 'radio' => 'Radio'][$kind] ?><?php endif; ?></span>
                 </div>
                 <div>
                     <?php $slideFields($s); ?>
