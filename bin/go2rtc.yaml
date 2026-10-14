@@ -5,6 +5,7 @@
 # of this file (owner www-data, mode 600: it holds the camera passwords).
 api:
   listen: "127.0.0.1:1984"
+  origin: "*"   # the websocket arrives through Apache with the monitor page's origin
 rtsp:
   listen: ""
 webrtc:
