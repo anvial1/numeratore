@@ -12,8 +12,11 @@ at the user's request. Integrating it into other projects is a later decision of
   without a login (GET or POST) with `?ok=` = `settings.queue.op_key`, for another server; the links are in
   Amministrazione › Eliminacode › "Comandi operatore per un altro server" (`called_by` stays NULL).
 - `bin/udp-listener.php` — the same commands over UDP (port 9999, `<op_key> next 1`, or JSON), run by the
-  systemd unit `bin/eliminacode-udp.service`. Installed only on the LAN server 192.168.1.63, not on
-  production. After changing the listener: `systemctl restart eliminacode-udp` there.
+  systemd unit `bin/eliminacode-udp.service`. Installed on the LAN server and, since 2026-10-15, on production too,
+  where the server-only drop-in `/etc/systemd/system/eliminacode-udp.service.d/allow.conf`
+  (`IPAddressDeny=any`, `IPAddressAllow=localhost 77.108.35.218`) accepts only the sender's server. Command words
+  also accept aliases (`QUEUE_ACTION_ALIASES`: previous/precedente → prev…). After changing the listener:
+  `systemctl restart eliminacode-udp` on each server that runs it.
 - IP camera tiles (`stream_type` = 'camera', LAN server only): go2rtc 1.9.9 (`eliminacode-go2rtc` service, user
   www-data, API on 127.0.0.1:1984, config `bin/go2rtc.yaml`) turns RTSP / ONVIF into MSE. The camera URL (with
   password) stays in the DB; the monitor gets only `/go2rtc/api/ws?src=c<16 hex>` (`queueCameraName()`), and Apache
