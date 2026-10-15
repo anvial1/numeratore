@@ -7,6 +7,8 @@ at the user's request. Integrating it into other projects is a later decision of
 
 ## What is in it
 - `queue/totem.php`, `queue/monitor.php` (no login, `?k=` = `settings.queue.key`), `queue/operator.php`.
+  The totem runs on a tablet: vmin sizes, buttons share the height (columns by orientation and `data-count`),
+  Wake Lock + full screen on first touch, installable full screen via `queue/totem-manifest.php?k=`.
 - `api/queue.php` — state, feed (weather/news/tiles), take, next/prev/recall/call (prev = the number before the current
   one, which goes back in the queue). next/prev/recall/call (and reset, key only) also work
   without a login (GET or POST) with `?ok=` = `settings.queue.op_key`, for another server; the links are in
