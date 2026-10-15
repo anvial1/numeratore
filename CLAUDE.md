@@ -44,7 +44,8 @@ at the user's request. Integrating it into other projects is a later decision of
 - `admin/monitor-launcher.php`: downloads "Monitor eliminacode.bat" (Chrome/Edge kiosk with
   `--autoplay-policy=no-user-gesture-required`, own profile) so the monitor's sound is on without a click.
   Browsers never let a page turn sound on by itself; in a normal browser the first touch/key does it.
-- `admin/stats.php` (Statistiche): tickets per day / month and per service (reparto), CSV export. Source is
+- `admin/stats.php` (Statistiche): tickets per day / month and per service (reparto), CSV export and PDF report
+  (`?pdf=1`, `includes/StatsPdf.php` on FPDF 1.86 bundled in `includes/lib/fpdf`, core Helvetica = Windows-1252). Source is
   `queue_daily_counts` (+1 per ticket in `queueTake()`), which survives the midnight and manual resets.
   Average wait = ticket taken → FIRST call (`queue_tickets.first_called_at`; recall/prev don't change it), summed
   per day in `queue_daily_counts.wait_seconds` / `waited` by `queueCall()` (waits over 4 h ignored).

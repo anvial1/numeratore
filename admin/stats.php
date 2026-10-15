@@ -3,7 +3,7 @@
  * Admin: statistics of the tickets taken (printed) per day and per service (reparto), and the
  * average wait (ticket → first call). Source: queue_daily_counts, filled by queueTake() (tickets)
  * and queueCall() (wait_seconds / waited); it is not touched by the midnight reset nor by
- * "Azzera la coda di oggi". ?csv=1 downloads the table.
+ * "Azzera la coda di oggi". ?csv=1 downloads the table, ?pdf=1 a PDF report (includes/StatsPdf.php).
  */
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/queue.php';
@@ -111,6 +111,64 @@ $maxSvc    = $perService ? max($perService) : 1;
 $qs        = static fn(array $extra) => '?' . http_build_query(array_merge(['from' => $from, 'to' => $to], $extra));
 $n         = static fn($x) => number_format((float) $x, 0, ',', '.');
 
+if (!empty($_GET['pdf'])) {
+    require_once __DIR__ . '/../includes/StatsPdf.php';
+    $period = $from === $to ? 'Giorno ' . date('d/m/Y', strtotime($from)) : 'Dal ' . date('d/m/Y', strtotime($from)) . ' al ' . date('d/m/Y', strtotime($to));
+    $pdf = new StatsPdf('Statistiche biglietti — ' . appName(), $period, UPGRADE_CONTACT);
+    $pdf->AddPage();
+    $tiles = [
+        ['Biglietti emessi', $n($total), $from !== $to ? $elapsed . ' giorn' . ($elapsed === 1 ? 'o' : 'i') : 'nel giorno'],
+        ['Media al giorno', number_format($avg, $avg < 10 ? 1 : 0, ',', '.'), 'biglietti'],
+        ['Giorno con più biglietti', $bestDay ? $n($perDay[$bestDay]) : '—', $bestDay ? $weekdays[(int) date('w', strtotime($bestDay))] . ' ' . date('d/m/Y', strtotime($bestDay)) : 'nessun biglietto'],
+        ['Attesa media', queueDuration($avgWait($waitTotal)), $waitTotal[1] ? 'su ' . $n($waitTotal[1]) . ' chiamate' : 'nessuna chiamata'],
+    ];
+    $pdf->tiles($tiles);
+    if (count($buckets) > 1) {
+        $pdf->section('Biglietti ' . ($grain === 'month' ? 'al mese' : 'al giorno'));
+        $pdf->bars(array_map('array_sum', $buckets), $label(array_key_first($buckets)), $label(array_key_last($buckets)));
+    }
+    $pdf->section('Per reparto');
+    if ($cols) {
+        $pdf->table(
+            [['Reparto', 70, 'L'], ['Biglietti', 25, 'R'], ['%', 18, 'R'], ['Media al giorno', 32, 'R'], ['Attesa media', 35, 'R']],
+            array_map(fn($s) => [
+                ['text' => $svcName($s) . ($s['active'] ? '' : ' (disattivato)'), 'dot' => $s['color']],
+                $n($perService[(int) $s['id']] ?? 0),
+                ($total ? round(($perService[(int) $s['id']] ?? 0) * 100 / $total) : 0) . '%',
+                number_format($from > $today ? 0 : ($perService[(int) $s['id']] ?? 0) / $elapsed, 1, ',', '.'),
+                queueDuration($avgWait($waitService[(int) $s['id']] ?? null)),
+            ], $cols),
+            ['Totale', $n($total), $total ? '100%' : '0%', number_format($avg, 1, ',', '.'), queueDuration($avgWait($waitTotal))]
+        );
+    } else {
+        $pdf->note('Nessun biglietto in questo periodo.');
+    }
+    $pdf->section($grain === 'month' ? 'Mese per mese' : 'Giorno per giorno');
+    $multi = count($cols) > 1;
+    $svcW  = $multi ? min(22, 80 / count($cols)) : 0;
+    $first = 180 - 28 - 32 - $svcW * ($multi ? count($cols) : 0);
+    $tcols = [[$grain === 'month' ? 'Mese' : 'Giorno', $first, 'L']];
+    if ($multi) foreach ($cols as $s) $tcols[] = [$s['letter'] ?: mb_substr($s['name'], 0, 6), $svcW, 'R'];
+    $tcols[] = ['Totale', 28, 'R'];
+    $tcols[] = ['Attesa media', 32, 'R'];
+    $trows = [];
+    foreach (array_reverse($buckets, true) as $k => $b) {
+        $r = [$label($k, true)];
+        if ($multi) foreach ($cols as $s) $r[] = $n($b[(int) $s['id']] ?? 0);
+        $r[] = $n(array_sum($b));
+        $r[] = queueDuration($avgWait($waitBucket[$k] ?? null));
+        $trows[] = $r;
+    }
+    $foot = ['Totale'];
+    if ($multi) foreach ($cols as $s) $foot[] = $n($perService[(int) $s['id']] ?? 0);
+    $foot[] = $n($total);
+    $foot[] = queueDuration($avgWait($waitTotal));
+    $pdf->table($tcols, $trows, $foot);
+    $pdf->note('Conta ogni biglietto preso al totem; il conteggio resta anche dopo gli azzeramenti. L\'attesa va dal biglietto alla sua prima chiamata ("Richiama" e "Precedente" non la cambiano); attese oltre 4 ore non sono contate.');
+    $pdf->Output('D', 'statistiche_' . $from . '_' . $to . '.pdf');
+    exit;
+}
+
 $pageTitle = 'Statistiche';
 include __DIR__ . '/../includes/header.php';
 ?>
@@ -146,7 +204,10 @@ include __DIR__ . '/../includes/header.php';
 
 <div class="page-header">
     <h1><i class="fas fa-chart-column"></i> Statistiche biglietti</h1>
-    <a href="<?= h($qs(['csv' => 1])) ?>" class="btn btn-outline"><i class="fas fa-file-csv"></i> Scarica CSV</a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="<?= h($qs(['pdf' => 1])) ?>" class="btn btn-primary"><i class="fas fa-file-pdf"></i> Scarica PDF</a>
+        <a href="<?= h($qs(['csv' => 1])) ?>" class="btn btn-outline"><i class="fas fa-file-csv"></i> Scarica CSV</a>
+    </div>
 </div>
 
 <div class="qs-filters">
