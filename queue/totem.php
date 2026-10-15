@@ -67,7 +67,9 @@ h1 { font-size:clamp(26px, 6.2vmin, 64px); margin:.5vmin 0 0; font-weight:800; l
                background:rgba(255,255,255,.2); display:flex; align-items:center; justify-content:center; flex:none; }
 .services.many .svc .letter, .services[data-count="5"] .svc .letter, .services[data-count="6"] .svc .letter { font-size:clamp(28px, 6vmin, 64px); width:clamp(46px, 9.5vmin, 100px); height:clamp(46px, 9.5vmin, 100px); }
 .svc > span:last-child { min-width:0; }
-.svc .name { font-size:clamp(20px, 4.6vmin, 50px); font-weight:800; line-height:1.1; overflow-wrap:break-word; display:block; }
+.svc .name { font-size:clamp(20px, 4.6vmin, 50px); font-weight:800; line-height:1.1; overflow-wrap:normal; hyphens:auto; -webkit-hyphens:auto; display:block; }
+@media (orientation:portrait) { .services.many .svc .name, .services[data-count="5"] .svc .name, .services[data-count="6"] .svc .name { font-size:clamp(18px, 3.8vmin, 40px); } }
+.services[data-count="1"] .svc { max-height:46vmin; }
 .svc .wait { font-size:clamp(14px, 2.6vmin, 26px); opacity:.9; margin-top:.6vmin; }
 .svc[disabled] { opacity:.6; }
 .empty { color:var(--muted); font-size:clamp(18px, 3vmin, 30px); text-align:center; align-self:center; }
