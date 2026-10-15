@@ -135,9 +135,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cfg['slide_seconds'] = max(3, min(120, (int) ($_POST['slide_seconds'] ?? 8)));
         $cfg['printer_host']  = preg_replace('/[^A-Za-z0-9.\-:]/', '', (string) ($_POST['printer_host'] ?? ''));
         $cfg['printer_port']  = max(1, min(65535, (int) ($_POST['printer_port'] ?? 9100)));
-        $cfg['printer_width'] = in_array((int) ($_POST['printer_width'] ?? 48), [32, 42, 48], true) ? (int) $_POST['printer_width'] : 48;
+        $cfg['printer_width'] = max(24, min(64, (int) ($_POST['printer_width'] ?? 48)));
+        $cfg['printer_codepage'] = max(0, min(255, (int) ($_POST['printer_codepage'] ?? 2)));
         setSetting('queue', $cfg);
         logActivity('queue_settings_updated', 'settings', null, null);
+        $back($msg, 'settings');
+    }
+
+    if ($action === 'test_printer') {
+        [, $msg] = queuePrinterCheck();
         $back($msg, 'settings');
     }
 
@@ -675,18 +681,19 @@ document.querySelectorAll('form.qa-upload').forEach(form => form.addEventListene
         </div>
         <div class="form-group"><label class="form-label">Messaggio in fondo al biglietto</label><textarea name="ticket_footer" maxlength="200" rows="2" class="form-control"><?= $v($cfg['ticket_footer']) ?></textarea></div>
 
-        <h3 style="font-size:1rem" class="mt-lg">Stampante di rete del totem (ESC/POS)</h3>
-        <p class="qa-note">Stampante termica raggiungibile dal server sulla porta 9100. Se lasci vuoto l'indirizzo, o la stampante non risponde, il totem stampa il biglietto dal browser.</p>
+        <h3 style="font-size:1rem" class="mt-lg">Stampante termica del totem (non fiscale, ESC/POS)</h3>
+        <p class="qa-note">Il totem stampa il biglietto su questa stampante di rete (porta 9100, come le stampanti non fiscali del gestionale). Il server la raggiunge anche tramite la VPN del locale.
+            Se lasci vuoto l'indirizzo, o la stampante non risponde, il totem stampa il biglietto dal browser del tablet.</p>
         <div class="form-row">
             <div class="form-group"><label class="form-label">Indirizzo IP</label><input type="text" name="printer_host" class="form-control" value="<?= $v($cfg['printer_host']) ?>" placeholder="192.168.1.50"></div>
-            <div class="form-group" style="max-width:140px"><label class="form-label">Porta</label><input type="number" name="printer_port" class="form-control" value="<?= (int) $cfg['printer_port'] ?>"></div>
-            <div class="form-group" style="max-width:200px"><label class="form-label">Larghezza carta</label>
-                <select name="printer_width" class="form-control">
-                    <?php foreach ([48 => '80 mm (48 caratteri)', 42 => '80 mm (42 caratteri)', 32 => '58 mm (32 caratteri)'] as $w => $l): ?>
-                        <option value="<?= $w ?>" <?= (int) $cfg['printer_width'] === $w ? 'selected' : '' ?>><?= $l ?></option>
-                    <?php endforeach; ?>
-                </select></div>
+            <div class="form-group" style="max-width:120px"><label class="form-label">Porta</label><input type="number" name="printer_port" class="form-control" value="<?= (int) $cfg['printer_port'] ?>"></div>
+            <div class="form-group" style="max-width:190px"><label class="form-label">Caratteri per riga</label>
+                <input type="number" name="printer_width" min="24" max="64" class="form-control" value="<?= (int) $cfg['printer_width'] ?>" list="qa-widths">
+                <datalist id="qa-widths"><option value="48">80 mm</option><option value="42">80 mm</option><option value="32">58 mm</option></datalist></div>
+            <div class="form-group" style="max-width:150px"><label class="form-label">Codepage</label>
+                <input type="number" name="printer_codepage" min="0" max="255" class="form-control" value="<?= (int) $cfg['printer_codepage'] ?>" title="2 = PC850 (lettere accentate), 0 = PC437"></div>
         </div>
+        <p class="qa-note" style="margin-top:-4px">Carta 80 mm: 48 caratteri (o 42), carta 58 mm: 32. Codepage 2 = lettere accentate (PC850), come nel gestionale.</p>
 
         <h3 style="font-size:1rem" class="mt-lg">Monitor</h3>
         <div class="form-row">
@@ -707,10 +714,12 @@ document.querySelectorAll('form.qa-upload').forEach(form => form.addEventListene
         <button class="btn btn-primary"><i class="fas fa-save"></i> Salva</button>
     </form>
     <?php if (trim((string) $cfg['printer_host']) !== ''): ?>
-        <form method="POST" class="card-body" style="padding-top:0">
-            <input type="hidden" name="action" value="test_print">
-            <button class="btn btn-outline"><i class="fas fa-print"></i> Stampa un biglietto di prova</button>
-        </form>
+        <div class="card-body" style="padding-top:0;display:flex;gap:8px;flex-wrap:wrap">
+            <form method="POST"><input type="hidden" name="action" value="test_printer">
+                <button class="btn btn-outline"><i class="fas fa-plug"></i> Verifica collegamento</button></form>
+            <form method="POST"><input type="hidden" name="action" value="test_print">
+                <button class="btn btn-outline"><i class="fas fa-print"></i> Stampa un biglietto di prova</button></form>
+        </div>
     <?php endif; ?>
 </div>
 

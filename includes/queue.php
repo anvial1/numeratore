@@ -43,6 +43,7 @@ function queueSettings(): array
         'printer_host'  => '',
         'printer_port'  => 9100,
         'printer_width' => 48,
+        'printer_codepage' => 2,   // ESC t n: 0 = PC437, 2 = PC850 (accents), as in the pub printers
     ];
     $cfg += ['op_key' => ''];
     if ($cfg['key'] === '' || $cfg['op_key'] === '') {
@@ -401,11 +402,30 @@ function queuePrinter(): ?ThermalPrinter
         return null;
     }
     return new ThermalPrinter([
-        'host'    => trim((string) $cfg['printer_host']),
-        'port'    => (int) $cfg['printer_port'] ?: 9100,
-        'width'   => (int) $cfg['printer_width'] ?: 48,
-        'timeout' => 4,
+        'host'     => trim((string) $cfg['printer_host']),
+        'port'     => (int) $cfg['printer_port'] ?: 9100,
+        'width'    => (int) $cfg['printer_width'] ?: 48,
+        'codepage' => (int) $cfg['printer_codepage'],
+        'timeout'  => 4,
     ]);
+}
+
+/** Can the server open the printer's port? [ok, message] for the admin "Verifica collegamento". */
+function queuePrinterCheck(): array
+{
+    $cfg  = queueSettings();
+    $host = trim((string) $cfg['printer_host']);
+    $port = (int) $cfg['printer_port'] ?: 9100;
+    if ($host === '') {
+        return [false, 'Nessuna stampante impostata: il totem stampa dal browser.'];
+    }
+    $t  = microtime(true);
+    $fp = @fsockopen($host, $port, $errno, $errstr, 4);
+    if (!$fp) {
+        return [false, "La stampante $host:$port non risponde ($errstr). Controlla che sia accesa e collegata alla rete: finché non risponde il totem stampa dal browser."];
+    }
+    fclose($fp);
+    return [true, "Stampante $host:$port raggiungibile (" . round((microtime(true) - $t) * 1000) . ' ms).'];
 }
 
 /** Print a taken ticket on the totem printer. Returns ThermalPrinter's result. */
