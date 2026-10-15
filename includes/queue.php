@@ -424,6 +424,7 @@ function queuePrintTicket(array $ticket): array
         'wait'    => $ticket['wait_text'] ?? '',
         'time'    => $ticket['time'],
         'footer'  => (string) $cfg['ticket_footer'],
+        'credit'  => UPGRADE_CONTACT,
     ]);
     if ($res['ok']) {
         getDBConnection()->prepare("UPDATE queue_tickets SET printed = 1 WHERE id = ?")->execute([$ticket['id']]);

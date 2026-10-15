@@ -79,6 +79,7 @@ h1 { font-size:5.5vh; margin:1vh 0 0; font-weight:800; }
     #printArea .p-num { font-size:54pt; font-weight:800; line-height:1.1; margin:3mm 0; }
     #printArea .p-small { font-size:10pt; }
     #printArea .p-foot { font-size:10pt; margin-top:3mm; border-top:1px dashed #000; padding-top:3mm; }
+    #printArea .p-credit { font-size:7pt; margin-top:2mm; }
 }
 </style>
 </head>
@@ -120,6 +121,7 @@ h1 { font-size:5.5vh; margin:1vh 0 0; font-weight:800; }
     <div class="p-small" id="pWait"></div>
     <div class="p-small" id="pTime"></div>
     <div class="p-foot"><?= nl2br($h($cfg['ticket_footer'])) ?></div>
+    <div class="p-credit"><?= $h(UPGRADE_CONTACT) ?></div>
 </div>
 
 <script>

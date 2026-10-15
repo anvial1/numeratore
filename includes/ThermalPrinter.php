@@ -30,7 +30,7 @@ class ThermalPrinter
      * in the middle, the service above it, people ahead, estimated wait and time below.
      *
      * @param array{brand?:string, service?:string, number?:string, ahead?:string,
-     *              wait?:string, time?:string, footer?:string} $t
+     *              wait?:string, time?:string, footer?:string, credit?:string} $t
      * @return array{ok:bool, error?:string, bytes?:int}
      */
     public function printQueueTicket(array $t): array
@@ -85,6 +85,10 @@ class ThermalPrinter
             foreach (preg_split('/\R/', (string) $t['footer']) as $fl) {
                 $out .= $this->enc($fl) . self::LF;
             }
+        }
+        if (!empty($t['credit'])) {
+            $out .= self::ESC . '!' . "\x01" . $this->enc((string) $t['credit']) . self::LF;   // small font
+            $out .= self::ESC . '!' . "\x00";
         }
         $out .= str_repeat(self::LF, 4);
         $out .= self::GS . 'V' . "\x01";                     // partial cut
