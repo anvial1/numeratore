@@ -114,7 +114,7 @@ $n         = static fn($x) => number_format((float) $x, 0, ',', '.');
 if (!empty($_GET['pdf'])) {
     require_once __DIR__ . '/../includes/StatsPdf.php';
     $period = $from === $to ? 'Giorno ' . date('d/m/Y', strtotime($from)) : 'Dal ' . date('d/m/Y', strtotime($from)) . ' al ' . date('d/m/Y', strtotime($to));
-    $pdf = new StatsPdf('Statistiche biglietti — ' . appName(), $period, UPGRADE_CONTACT);
+    $pdf = new StatsPdf('Statistiche biglietti — ' . appName(), $period, UPGRADE_CONTACT, __DIR__ . '/../assets/brand/upgrade-logo.png');
     $pdf->AddPage();
     $tiles = [
         ['Biglietti emessi', $n($total), $from !== $to ? $elapsed . ' giorn' . ($elapsed === 1 ? 'o' : 'i') : 'nel giorno'],

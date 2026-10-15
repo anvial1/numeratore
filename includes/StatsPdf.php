@@ -17,13 +17,16 @@ class StatsPdf extends FPDF
     private string $title;
     private string $period;
     private string $footer;
+    private string $logo;
 
-    public function __construct(string $title, string $period, string $footer)
+    /** $footer = Upgrade's contact (under the logo and at the bottom); $logo = PNG path, '' for none. */
+    public function __construct(string $title, string $period, string $footer, string $logo = '')
     {
         parent::__construct('P', 'mm', 'A4');
         $this->title  = $title;
         $this->period = $period;
         $this->footer = $footer;
+        $this->logo   = is_file($logo) ? $logo : '';
         $this->SetMargins(15, 15, 15);
         $this->SetAutoPageBreak(true, 18);
         $this->AliasNbPages();
@@ -40,13 +43,23 @@ class StatsPdf extends FPDF
 
     public function Header(): void
     {
+        // Upgrade logo top right with its phone number under it; title, period and date on the left.
+        if ($this->logo !== '') {
+            $this->Image($this->logo, 159, 11, 36);
+            $this->SetXY(140, 23.5);
+            $this->SetFont('Helvetica', 'B', 8.5);
+            $this->SetTextColor(...self::INK);
+            $this->Cell(55, 4, $this->t($this->footer), 0, 0, 'R');
+            $this->SetXY(15, 13);
+        }
         $this->SetFont('Helvetica', 'B', 15);
         $this->SetTextColor(...self::INK);
-        $this->Cell(0, 7, $this->t($this->title), 0, 1);
+        $this->Cell(135, 7, $this->t($this->title), 0, 1);
         $this->SetFont('Helvetica', '', 9.5);
         $this->SetTextColor(...self::GREY);
-        $this->Cell(120, 5, $this->t($this->period), 0, 0);
-        $this->Cell(0, 5, $this->t('Generato il ' . date('d/m/Y H:i')), 0, 1, 'R');
+        $this->Cell(135, 5, $this->t($this->period), 0, 1);
+        $this->Cell(135, 5, $this->t('Generato il ' . date('d/m/Y H:i')), 0, 1);
+        $this->SetY(max($this->GetY(), 28));
         $this->SetDrawColor(...self::BLUE);
         $this->SetLineWidth(.6);
         $this->Line(15, $this->GetY() + 1.5, 195, $this->GetY() + 1.5);
