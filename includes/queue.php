@@ -192,6 +192,12 @@ function queueRecall(int $serviceId, ?int $userId): ?array
     return ['id' => (int) $t['id'], 'label' => queueLabel((string) $t['letter'], (int) $t['number'])];
 }
 
+/** Other words accepted for the operator commands (HTTP and UDP), e.g. "previous" for "prev". */
+const QUEUE_ACTION_ALIASES = [
+    'previous' => 'prev', 'precedente' => 'prev', 'back' => 'prev', 'indietro' => 'prev',
+    'avanti' => 'next', 'richiama' => 'recall', 'chiama' => 'call',
+];
+
 /**
  * One step back: calls the number before the current one (the highest of today's tickets below it)
  * and puts the current one back in the queue, so "next" calls it again. Null when the service has

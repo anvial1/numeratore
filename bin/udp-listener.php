@@ -62,6 +62,7 @@ while (true) {
             $w = preg_split('/[\s;,]+/', $msg, -1, PREG_SPLIT_NO_EMPTY);
             [$key, $action, $svc, $num] = [$w[0] ?? '', strtolower($w[1] ?? ''), $w[2] ?? '', (int) ($w[3] ?? 0)];
         }
+        $action = QUEUE_ACTION_ALIASES[strtolower($action)] ?? strtolower($action);
         if (!$keyOk($key)) {
             $out = ['success' => false, 'message' => 'Unauthorized'];
         } elseif ($action === 'state') {

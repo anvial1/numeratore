@@ -25,6 +25,7 @@ header('Cache-Control: no-store');
 
 $input  = $_SERVER['REQUEST_METHOD'] === 'POST' ? (json_decode(file_get_contents('php://input'), true) ?: []) : $_GET;
 $action = (string) ($input['action'] ?? 'state');
+$action = QUEUE_ACTION_ALIASES[strtolower($action)] ?? $action;
 $key    = (string) ($input['k'] ?? $_GET['k'] ?? '');
 $screen = queueKeyOk($key);
 $staff  = isLoggedIn() && hasRole(QUEUE_OPERATOR_ROLES);
