@@ -4,6 +4,7 @@
  * operator links (api/queue.php ?ok=), one datagram per command.
  *
  *   <op_key> next <service>              → calls the next number
+ *   <op_key> prev <service>              → calls the number before the current one (back in the queue)
  *   <op_key> recall <service>            → calls the current number again
  *   <op_key> call <service> <number>     → calls that number
  *   <op_key> state                       → numbers being served, waiting
@@ -75,15 +76,21 @@ while (true) {
                 logActivity('queue_reset', 'queue_service', $sid, ['from' => 'udp ' . preg_replace('/:\d+$/', '', $peer)]);
                 $out = ['success' => true, 'reset' => $sid ?? 'all'];
             }
-        } elseif (in_array($action, ['next', 'recall', 'call'], true)) {
+        } elseif (in_array($action, ['next', 'prev', 'recall', 'call'], true)) {
             $sid = $serviceId($svc);
             $t = match ($action) {
+                'prev'   => queuePrev($sid, null),
                 'recall' => queueRecall($sid, null),
                 'call'   => queueCall($sid, max(1, $num), null),
                 default  => queueCall($sid, 'next', null),
             };
             $out = $t ? ['success' => true, 'called' => $t['label']]
-                      : ['success' => false, 'message' => $action === 'next' ? 'Nessuno in attesa' : ($action === 'recall' ? 'Nessun numero da richiamare' : 'Numero non trovato tra i biglietti di oggi')];
+                      : ['success' => false, 'message' => match ($action) {
+                          'next'   => 'Nessuno in attesa',
+                          'prev'   => 'Nessun numero precedente',
+                          'recall' => 'Nessun numero da richiamare',
+                          default  => 'Numero non trovato tra i biglietti di oggi',
+                      }];
         } else {
             $out = ['success' => false, 'message' => 'Unknown action'];
         }

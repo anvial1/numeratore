@@ -9,8 +9,9 @@
  * GET  ?action=feed&k=                 → weather, news headlines, product tiles
  * POST {action: take, k, service_id}   → new ticket (printed on the network printer
  *                                        if configured; printed:false = print in the browser)
- * POST {action: next|recall|call, service_id[, number]}  (staff)
- * GET|POST action=next|recall|call&service_id=&number=&ok=<settings.queue.op_key>
+ * POST {action: next|prev|recall|call, service_id[, number]}  (staff)
+ *                                      prev = the number before the current one (which goes back in the queue)
+ * GET|POST action=next|prev|recall|call&service_id=&number=&ok=<settings.queue.op_key>
  *                                      → the same without a login, for another server
  * GET|POST action=reset[&service_id=]&ok=  → today's queue of one service (or all) cleared:
  *                                        the next ticket is number 1 again (operator key only)
@@ -78,6 +79,7 @@ try {
             jsonResponse(['success' => true, 'ticket' => $ticket, 'printed' => $print['ok'], 'print_error' => $print['ok'] ? null : $print['error']]);
 
         case 'next':
+        case 'prev':
         case 'recall':
         case 'call':
             if (!$remote && ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$staff)) {
@@ -88,6 +90,9 @@ try {
             if ($action === 'recall') {
                 $t = queueRecall($sid, $uid);
                 $msg = 'Nessun numero da richiamare';
+            } elseif ($action === 'prev') {
+                $t = queuePrev($sid, $uid);
+                $msg = 'Nessun numero precedente';
             } elseif ($action === 'call') {
                 $t = queueCall($sid, max(1, (int) ($input['number'] ?? 0)), $uid);
                 $msg = 'Numero non trovato tra i biglietti di oggi';

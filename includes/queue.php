@@ -192,6 +192,46 @@ function queueRecall(int $serviceId, ?int $userId): ?array
     return ['id' => (int) $t['id'], 'label' => queueLabel((string) $t['letter'], (int) $t['number'])];
 }
 
+/**
+ * One step back: calls the number before the current one (the highest of today's tickets below it)
+ * and puts the current one back in the queue, so "next" calls it again. Null when the service has
+ * no number being served or nothing before it.
+ */
+function queuePrev(int $serviceId, ?int $userId): ?array
+{
+    $pdo   = getDBConnection();
+    $today = date('Y-m-d');
+    $pdo->beginTransaction();
+    try {
+        $st = $pdo->prepare("SELECT letter FROM queue_services WHERE id = ? FOR UPDATE");
+        $st->execute([$serviceId]);
+        $letter = $st->fetchColumn();
+        $st = $pdo->prepare("SELECT id, number FROM queue_tickets WHERE service_id = ? AND ticket_date = ? AND status = 'called' ORDER BY called_at DESC LIMIT 1");
+        $st->execute([$serviceId, $today]);
+        $cur = $st->fetch();
+        if ($letter === false || !$cur) {
+            $pdo->rollBack();
+            return null;
+        }
+        $st = $pdo->prepare("SELECT id, number FROM queue_tickets WHERE service_id = ? AND ticket_date = ? AND number < ? ORDER BY number DESC LIMIT 1");
+        $st->execute([$serviceId, $today, $cur['number']]);
+        $t = $st->fetch();
+        if (!$t) {
+            $pdo->rollBack();
+            return null;
+        }
+        $pdo->prepare("UPDATE queue_tickets SET status = 'waiting' WHERE service_id = ? AND ticket_date = ? AND status = 'called'")
+            ->execute([$serviceId, $today]);
+        $pdo->prepare("UPDATE queue_tickets SET status = 'called', called_at = ?, call_count = call_count + 1, called_by = ? WHERE id = ?")
+            ->execute([date('Y-m-d H:i:s'), $userId, $t['id']]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+    return ['id' => (int) $t['id'], 'label' => queueLabel((string) $letter, (int) $t['number'])];
+}
+
 /** Clear today's queue of one service (or all): the next ticket is number 1 again. */
 function queueReset(?int $serviceId): void
 {

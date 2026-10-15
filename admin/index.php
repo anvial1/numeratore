@@ -280,6 +280,7 @@ include __DIR__ . '/../includes/header.php';
                 $sid  = (int) $s['id'];
                 $name = trim($s['letter'] . ' ' . $s['name']);
                 $row('fa-forward', "$name — Avanti", $make('next', $sid, null));
+                $row('fa-backward', "$name — Precedente", $make('prev', $sid, null));
                 $row('fa-rotate-left', "$name — Richiama", $make('recall', $sid, null));
                 $row('fa-hashtag', "$name — Chiama numero (cambia 1 con il numero)", $make('call', $sid, 1));
                 $row('fa-eraser', "$name — Azzera numerazione", $make('reset', $sid, null));
@@ -289,7 +290,7 @@ include __DIR__ . '/../includes/header.php';
         };
         ?>
         <p class="qa-note">Servono a un altro server per chiamare i numeri senza accesso, come i pulsanti della pagina operatore: <strong>Avanti</strong> chiama il prossimo in attesa,
-            <strong>Richiama</strong> ripete il numero attuale sul monitor, <strong>Chiama numero</strong> chiama un numero preciso dei biglietti di oggi, <strong>Situazione</strong> dice i numeri in servizio e quanti aspettano,
+            <strong>Precedente</strong> torna indietro di un numero (quello attuale torna in coda e "Avanti" lo richiamerà), <strong>Richiama</strong> ripete il numero attuale sul monitor, <strong>Chiama numero</strong> chiama un numero preciso dei biglietti di oggi, <strong>Situazione</strong> dice i numeri in servizio e quanti aspettano,
             <strong>Azzera numerazione</strong> cancella la coda di oggi del reparto (o di tutti) e il prossimo biglietto riparte da 1, come il pulsante di azzeramento qui sotto (le statistiche restano).
             Il monitor suona e annuncia il numero come sempre. Contengono la chiave operatore: chi li ha può chiamare i numeri, quindi dalli solo al server che li usa.</p>
 
