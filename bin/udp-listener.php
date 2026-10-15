@@ -54,6 +54,7 @@ while (true) {
     if ($msg === false || $peer === null) continue;
     $msg = trim($msg);
     $action = $svc = '';
+    $num = 0;
     try {
         if ($msg !== '' && $msg[0] === '{') {
             $in = json_decode($msg, true) ?: [];
@@ -104,6 +105,6 @@ while (true) {
         }
     }
     $peerIp = preg_replace('/:\d+$/', '', $peer);
-    echo date('Y-m-d H:i:s') . " $peerIp $action $svc → " . ($out['called'] ?? $out['message'] ?? (isset($out['reset']) ? 'reset' : 'ok')) . "\n";
+    echo date('Y-m-d H:i:s') . " $peerIp $action $svc" . ($action === 'call' ? " $num" : '') . ' → ' . ($out['called'] ?? $out['message'] ?? (isset($out['reset']) ? 'reset' : 'ok')) . "\n";
     stream_socket_sendto($sock, json_encode($out, JSON_UNESCAPED_UNICODE), 0, $peer);
 }
