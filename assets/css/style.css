@@ -1645,6 +1645,8 @@ textarea.form-control {
 .nav-mark img { height: 36px; }
 .powered { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text-secondary); font-size: .75rem; }
 .powered img { height: 22px; width: auto; display: block; }
+.powered-mark { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.powered-contact { font-size: .68rem; line-height: 1; color: var(--text-secondary); white-space: nowrap; }
 .main-footer .powered { margin-bottom: 6px; }
 .login-brand { width: 220px; max-width: 80%; height: auto; display: block; margin: 0 auto 10px; }
 .login-container .powered { margin-top: var(--space-lg); }

@@ -43,6 +43,8 @@ html,body { margin:0; height:100%; background:linear-gradient(160deg,#0c4a6e 0%,
 /* Upgrade logo on a white plate: its grey lettering needs a light background */
 .top .powered { display:flex; flex-direction:column; align-items:center; gap:.3vh; background:#fff; border-radius:12px; padding:.8vh 1vw; color:#64748b; font-size:1.2vh; }
 .top .powered img { height:3.6vh; max-width:none; width:auto; display:block; }
+.top .powered-mark { display:flex; flex-direction:column; align-items:center; gap:.3vh; }
+.top .powered-contact { font-size:1.1vh; line-height:1; white-space:nowrap; }
 .top .time { font-size:5.4vh; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; }
 .top .date { font-size:2vh; color:var(--muted); text-transform:capitalize; }
 .top .wnow { display:flex; align-items:center; gap:1vw; padding-left:2vw; border-left:2px solid rgba(255,255,255,.12); }

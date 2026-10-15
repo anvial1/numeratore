@@ -40,6 +40,8 @@ html,body { margin:0; height:100%; background:linear-gradient(160deg,#f0f9ff 0%,
 .head .brand { font-size:5vh; font-weight:800; }
 .powered { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:auto; color:var(--muted); font-size:1.6vh; }
 .powered img { height:3.2vh; width:auto; display:block; }
+.powered-mark { display:flex; flex-direction:column; align-items:center; gap:.3vh; }
+.powered-contact { font-size:1.3vh; line-height:1; white-space:nowrap; }
 h1 { font-size:5.5vh; margin:1vh 0 0; font-weight:800; }
 .sub { color:var(--muted); font-size:2.6vh; margin-top:.8vh; }
 .services { flex:1; width:100%; max-width:1400px; display:grid; gap:2.5vh; align-content:center;

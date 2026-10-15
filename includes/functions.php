@@ -46,11 +46,12 @@ function brandHeadTags(): string
         . '<link rel="apple-touch-icon" href="/assets/brand/icon-180.png">';
 }
 
-/** Small "powered by Upgrade" line: login, staff pages, totem and monitor. */
+/** Small "powered by Upgrade" line with the contact under the logo: login, staff pages, totem and monitor. */
 function poweredBy(string $class = ''): string
 {
     return '<div class="powered ' . h($class) . '"><span>powered by</span>'
-        . '<img src="/assets/brand/upgrade-logo.png" alt="Upgrade" width="96" height="31"></div>';
+        . '<span class="powered-mark"><img src="/assets/brand/upgrade-logo.png" alt="Upgrade" width="96" height="31">'
+        . '<small class="powered-contact">Upgrade srls : 3288054977</small></span></div>';
 }
 
 function isLoggedIn(): bool
