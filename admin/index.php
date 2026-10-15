@@ -142,7 +142,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'test_print') {
-        $res = queuePrintTicket(['id' => 0, 'service' => 'Prova stampa', 'label' => 'A000', 'ahead' => 0, 'time' => date('d/m/Y H:i')]);
+        $res = queuePrintTicket(['id' => 0, 'service' => 'Prova stampa', 'label' => 'A000', 'ahead_text' => 'In coda prima di te: 3',
+                                 'wait_text' => queueWaitText(12), 'time' => date('d/m/Y H:i')]);
         $back($res['ok'] ? 'Biglietto di prova inviato alla stampante.' : 'Stampa non riuscita: ' . $res['error'], 'settings');
     }
 

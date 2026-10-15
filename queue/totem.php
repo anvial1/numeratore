@@ -61,6 +61,8 @@ h1 { font-size:5.5vh; margin:1vh 0 0; font-weight:800; }
 .ticket .svcname { font-size:3.4vh; font-weight:700; }
 .ticket .num { font-size:20vh; font-weight:800; line-height:1; margin:2vh 0; letter-spacing:.02em; }
 .ticket .ahead { font-size:3vh; }
+.ticket .wait { font-size:2.4vh; opacity:.85; margin-top:.6vh; }
+.ticket .wait:empty { display:none; }
 .ticket .take { font-size:3vh; font-weight:700; margin-top:3vh; color:#16a34a; }
 .ticket .err { font-size:2.4vh; margin-top:2vh; color:#dc2626; }
 #printArea { display:none; }
@@ -102,6 +104,7 @@ h1 { font-size:5.5vh; margin:1vh 0 0; font-weight:800; }
         <div class="svcname" id="tSvc"></div>
         <div class="num" id="tNum"></div>
         <div class="ahead" id="tAhead"></div>
+        <div class="ahead wait" id="tWait"></div>
         <div class="take" id="tTake">Ritira il tuo biglietto</div>
         <div class="err" id="tErr" style="display:none"></div>
     </div>
@@ -112,6 +115,7 @@ h1 { font-size:5.5vh; margin:1vh 0 0; font-weight:800; }
     <div class="p-svc" id="pSvc"></div>
     <div class="p-num" id="pNum"></div>
     <div class="p-small" id="pAhead"></div>
+    <div class="p-small" id="pWait"></div>
     <div class="p-small" id="pTime"></div>
     <div class="p-foot"><?= nl2br($h($cfg['ticket_footer'])) ?></div>
 </div>
@@ -134,14 +138,16 @@ async function take(id) {
         const t = j.ticket;
         document.getElementById('tSvc').textContent = t.service;
         document.getElementById('tNum').textContent = t.label;
-        document.getElementById('tAhead').textContent = t.ahead > 0 ? 'Persone prima di te: ' + t.ahead : 'Sei il prossimo!';
+        document.getElementById('tAhead').textContent = t.ahead_text;
+        document.getElementById('tWait').textContent = t.wait_text || '';
         document.getElementById('tTake').textContent = 'Ritira il tuo biglietto';
         document.getElementById('overlay').classList.add('show');
         if (!j.printed) {
             // No network printer (or it failed): print from the browser.
             document.getElementById('pSvc').textContent = t.service;
             document.getElementById('pNum').textContent = t.label;
-            document.getElementById('pAhead').textContent = t.ahead > 0 ? 'Persone prima di te: ' + t.ahead : '';
+            document.getElementById('pAhead').textContent = t.ahead_text;
+            document.getElementById('pWait').textContent = t.wait_text || '';
             document.getElementById('pTime').textContent = t.time;
             setTimeout(() => window.print(), 150);
         }
@@ -149,6 +155,7 @@ async function take(id) {
         document.getElementById('tSvc').textContent = '';
         document.getElementById('tNum').textContent = '—';
         document.getElementById('tAhead').textContent = '';
+        document.getElementById('tWait').textContent = '';
         document.getElementById('tTake').textContent = '';
         err.textContent = 'Non è stato possibile emettere il biglietto. Riprova o chiedi al personale.';
         err.style.display = '';

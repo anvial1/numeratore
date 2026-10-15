@@ -1,8 +1,9 @@
 <?php
 /**
- * Admin: statistics of the tickets taken (printed) per day and per service (reparto).
- * Source: queue_daily_counts, filled by queueTake(); it is not touched by the
- * midnight reset nor by "Azzera la coda di oggi". ?csv=1 downloads the table.
+ * Admin: statistics of the tickets taken (printed) per day and per service (reparto), and the
+ * average wait (ticket → first call). Source: queue_daily_counts, filled by queueTake() (tickets)
+ * and queueCall() (wait_seconds / waited); it is not touched by the midnight reset nor by
+ * "Azzera la coda di oggi". ?csv=1 downloads the table.
  */
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/queue.php';
@@ -32,7 +33,7 @@ if (isset($presets[$preset])) {
 
 $services = queueServices(false);
 $byId     = array_column($services, null, 'id');
-$st = getDBConnection()->prepare("SELECT count_date, service_id, tickets FROM queue_daily_counts WHERE count_date BETWEEN ? AND ? ORDER BY count_date");
+$st = getDBConnection()->prepare("SELECT count_date, service_id, tickets, wait_seconds, waited FROM queue_daily_counts WHERE count_date BETWEEN ? AND ? ORDER BY count_date");
 $st->execute([$from, $to]);
 $rows = $st->fetchAll();
 
@@ -53,13 +54,23 @@ for ($t = strtotime($from); $t <= strtotime($to); $t = strtotime('+1 day', $t)) 
 }
 $perService = [];
 $perDay     = [];
+// Waiting time (ticket taken → first call): [seconds, tickets] per bucket, per service and in total.
+$waitBucket = $waitService = [];
+$waitTotal  = [0, 0];
+$addWait    = static function (?array &$w, array $r): void {
+    $w = [($w[0] ?? 0) + (int) $r['wait_seconds'], ($w[1] ?? 0) + (int) $r['waited']];
+};
 foreach ($rows as $r) {
     $k = $keyOf($r['count_date']);
     $sid = (int) $r['service_id'];
     $buckets[$k][$sid] = ($buckets[$k][$sid] ?? 0) + (int) $r['tickets'];
     $perService[$sid]  = ($perService[$sid] ?? 0) + (int) $r['tickets'];
     $perDay[$r['count_date']] = ($perDay[$r['count_date']] ?? 0) + (int) $r['tickets'];
+    $addWait($waitBucket[$k], $r);
+    $addWait($waitService[$sid], $r);
+    $addWait($waitTotal, $r);
 }
+$avgWait   = static fn(?array $w) => !empty($w[1]) ? $w[0] / $w[1] : null;
 $total     = array_sum($perService);
 $elapsed   = max(1, (int) round((strtotime(min($to, $today)) - strtotime($from)) / 86400) + 1); // future days don't lower the average
 $avg       = $from > $today ? 0 : $total / $elapsed;
@@ -81,13 +92,15 @@ if (!empty($_GET['csv'])) {
     header('Content-Disposition: attachment; filename="biglietti_' . $from . '_' . $to . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // Excel reads the accents
-    fputcsv($out, array_merge([$grain === 'month' ? 'Mese' : 'Data'], array_map($svcName, $cols), ['Totale']), ';');
+    fputcsv($out, array_merge([$grain === 'month' ? 'Mese' : 'Data'], array_map($svcName, $cols), ['Totale', 'Attesa media (minuti)']), ';');
     foreach ($buckets as $k => $b) {
         $line = [$grain === 'month' ? $k : date('d/m/Y', strtotime($k))];
         foreach ($cols as $s) {
             $line[] = $b[(int) $s['id']] ?? 0;
         }
         $line[] = array_sum($b);
+        $aw = $avgWait($waitBucket[$k] ?? null);
+        $line[] = $aw === null ? '' : number_format($aw / 60, 1, ',', '');
         fputcsv($out, $line, ';');
     }
     exit;
@@ -156,6 +169,8 @@ include __DIR__ . '/../includes/header.php';
     <div class="qs-tile"><div class="k">Giorno con più biglietti</div>
         <div class="v"><?= $bestDay ? $n($perDay[$bestDay]) : '—' ?></div>
         <div class="s"><?= $bestDay ? h($weekdays[(int) date('w', strtotime($bestDay))] . ' ' . date('d/m/Y', strtotime($bestDay))) : 'nessun biglietto' ?></div></div>
+    <div class="qs-tile"><div class="k">Attesa media</div><div class="v"><?= h(queueDuration($avgWait($waitTotal))) ?></div>
+        <div class="s"><?= $waitTotal[1] ? 'dal biglietto alla chiamata · ' . $n($waitTotal[1]) . ' chiamat' . ($waitTotal[1] === 1 ? 'o' : 'i') : 'nessun numero chiamato' ?></div></div>
     <?php if (count($cols) > 1): $top = array_search($maxSvc, $perService, true); ?>
     <div class="qs-tile"><div class="k">Reparto più richiesto</div>
         <div class="v" style="font-size:1.4rem;padding:6px 0"><span class="qs-dot" style="background:<?= h($byId[$top]['color']) ?>"></span><?= h($svcName($byId[$top])) ?></div>
@@ -191,13 +206,14 @@ include __DIR__ . '/../includes/header.php';
             <p class="text-muted">Nessun biglietto in questo periodo.</p>
         <?php else: ?>
         <table class="qs-table">
-            <tr><th>Reparto</th><th>Biglietti</th><th>%</th><th>Media al giorno</th><th style="width:40%"></th></tr>
+            <tr><th>Reparto</th><th>Biglietti</th><th>%</th><th>Media al giorno</th><th>Attesa media</th><th style="width:35%"></th></tr>
             <?php foreach ($cols as $s): $c = $perService[(int) $s['id']] ?? 0; ?>
                 <tr>
                     <td><span class="qs-dot" style="background:<?= h($s['color']) ?>"></span><?= h($svcName($s)) ?><?= $s['active'] ? '' : ' <span class="text-muted">(disattivato)</span>' ?></td>
                     <td><?= $n($c) ?></td>
                     <td><?= $total ? round($c * 100 / $total) : 0 ?>%</td>
                     <td><?= h(number_format($from > $today ? 0 : $c / $elapsed, 1, ',', '.')) ?></td>
+                    <td><?= h(queueDuration($avgWait($waitService[(int) $s['id']] ?? null))) ?></td>
                     <td><div class="qs-bar" style="width:<?= round($c * 100 / $maxSvc, 2) ?>%;background:<?= h($s['color']) ?>" title="<?= h($svcName($s) . ': ' . $c) ?>"></div></td>
                 </tr>
             <?php endforeach; ?>
@@ -212,19 +228,21 @@ include __DIR__ . '/../includes/header.php';
         <table class="qs-table">
             <thead><tr><th><?= $grain === 'month' ? 'Mese' : 'Giorno' ?></th>
                 <?php if (count($cols) > 1) foreach ($cols as $s): ?><th><span class="qs-dot" style="background:<?= h($s['color']) ?>"></span><?= h($s['letter'] ?: $s['name']) ?></th><?php endforeach; ?>
-                <th>Totale</th></tr></thead>
+                <th>Totale</th><th>Attesa media</th></tr></thead>
             <tbody>
             <?php foreach (array_reverse($buckets, true) as $k => $b): $sum = array_sum($b); ?>
                 <tr class="<?= $sum ? '' : 'zero' ?>"><td><?= h($label($k, true)) ?></td>
                     <?php if (count($cols) > 1) foreach ($cols as $s): ?><td><?= $n($b[(int) $s['id']] ?? 0) ?></td><?php endforeach; ?>
-                    <td><strong><?= $n($sum) ?></strong></td></tr>
+                    <td><strong><?= $n($sum) ?></strong></td>
+                    <td><?= h(queueDuration($avgWait($waitBucket[$k] ?? null))) ?></td></tr>
             <?php endforeach; ?>
             </tbody>
             <tfoot><tr><td>Totale</td>
                 <?php if (count($cols) > 1) foreach ($cols as $s): ?><td><?= $n($perService[(int) $s['id']] ?? 0) ?></td><?php endforeach; ?>
-                <td><?= $n($total) ?></td></tr></tfoot>
+                <td><?= $n($total) ?></td><td><?= h(queueDuration($avgWait($waitTotal))) ?></td></tr></tfoot>
         </table>
-        <p class="qa-note mt-md text-muted" style="font-size:.85rem">Conta ogni biglietto preso al totem. Il conteggio resta anche dopo l'azzeramento di mezzanotte o "Azzera la coda di oggi".</p>
+        <p class="qa-note mt-md text-muted" style="font-size:.85rem">Conta ogni biglietto preso al totem. Il conteggio resta anche dopo l'azzeramento di mezzanotte o "Azzera la coda di oggi".
+            L'<strong>attesa</strong> va dal momento in cui si prende il biglietto alla sua prima chiamata ("Richiama" e "Precedente" non la cambiano); attese oltre 4 ore non vengono contate.</p>
     </div>
 </div>
 <?php include __DIR__ . '/../includes/footer.php'; ?>

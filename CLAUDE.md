@@ -42,6 +42,10 @@ at the user's request. Integrating it into other projects is a later decision of
   Browsers never let a page turn sound on by itself; in a normal browser the first touch/key does it.
 - `admin/stats.php` (Statistiche): tickets per day / month and per service (reparto), CSV export. Source is
   `queue_daily_counts` (+1 per ticket in `queueTake()`), which survives the midnight and manual resets.
+  Average wait = ticket taken → FIRST call (`queue_tickets.first_called_at`; recall/prev don't change it), summed
+  per day in `queue_daily_counts.wait_seconds` / `waited` by `queueCall()` (waits over 4 h ignored).
+  The ticket (printer, browser print, totem screen) shows "In coda prima di te: N" and "Attesa stimata: circa X min"
+  (`queueWaitEstimate()`: people ahead × median gap between the service's recent first calls; none until 3 gaps).
 - `includes/queue.php` (all queue logic, settings in `settings.queue`), `includes/functions.php`
   (session, auth, `appName()`), `includes/ThermalPrinter.php` (ESC/POS ticket over TCP 9100).
 - Roles: `admin`, `operator`. Users are never deleted, only disabled.

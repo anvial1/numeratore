@@ -27,10 +27,10 @@ class ThermalPrinter
 
     /**
      * Print an eliminacode ticket (includes/queue.php): the number very large
-     * in the middle, the service above it, people ahead and time below.
+     * in the middle, the service above it, people ahead, estimated wait and time below.
      *
      * @param array{brand?:string, service?:string, number?:string, ahead?:string,
-     *              time?:string, footer?:string} $t
+     *              wait?:string, time?:string, footer?:string} $t
      * @return array{ok:bool, error?:string, bytes?:int}
      */
     public function printQueueTicket(array $t): array
@@ -71,6 +71,10 @@ class ThermalPrinter
         $out .= self::LF;
         if (!empty($t['ahead'])) {
             $out .= self::ESC . '!' . "\x08" . $this->enc((string) $t['ahead']) . self::LF;
+            $out .= self::ESC . '!' . "\x00";
+        }
+        if (!empty($t['wait'])) {
+            $out .= self::ESC . '!' . "\x08" . $this->enc((string) $t['wait']) . self::LF;
             $out .= self::ESC . '!' . "\x00";
         }
         if (!empty($t['time'])) {

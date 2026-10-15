@@ -118,20 +118,85 @@ function queueTake(int $serviceId): ?array
         $st = $pdo->prepare("SELECT COUNT(*) FROM queue_tickets WHERE service_id = ? AND ticket_date = ? AND status = 'waiting' AND number < ?");
         $st->execute([$serviceId, $today, $number]);
         $ahead = (int) $st->fetchColumn();
+        $st = $pdo->prepare("SELECT COUNT(*) FROM queue_tickets WHERE service_id = ? AND ticket_date = ? AND status = 'called'");
+        $st->execute([$serviceId, $today]);
+        $serving = (int) $st->fetchColumn() > 0;
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack();
         throw $e;
     }
+    $wait = queueWaitEstimate($serviceId, $ahead, $serving);
     return [
-        'id'      => $id,
-        'number'  => $number,
-        'label'   => queueLabel((string) $svc['letter'], $number),
-        'service' => (string) $svc['name'],
-        'color'   => (string) $svc['color'],
-        'ahead'   => $ahead,
-        'time'    => date('d/m/Y H:i', strtotime($now)),
+        'id'         => $id,
+        'number'     => $number,
+        'label'      => queueLabel((string) $svc['letter'], $number),
+        'service'    => (string) $svc['name'],
+        'color'      => (string) $svc['color'],
+        'ahead'      => $ahead,
+        'ahead_text' => $ahead > 0 ? 'In coda prima di te: ' . $ahead : 'Sei il prossimo!',
+        'wait_min'   => $wait,
+        'wait_text'  => queueWaitText($wait),
+        'time'       => date('d/m/Y H:i', strtotime($now)),
     ];
+}
+
+/** A waiting time above this (4 h) is not a real wait (forgotten ticket…): left out of the statistics. */
+const QUEUE_WAIT_MAX = 14400;
+
+/**
+ * Estimated wait in minutes for a new ticket: people ahead (plus half a turn for the one being
+ * served) times the service's usual pace, the median gap between its recent first calls (last
+ * 14 days, gaps over 30 min left out: breaks, closing). Null when there are not enough calls
+ * yet to know the pace, 0 when nobody is ahead and nobody is being served.
+ */
+function queueWaitEstimate(int $serviceId, int $ahead, bool $serving): ?int
+{
+    if ($ahead === 0 && !$serving) {
+        return 0;
+    }
+    $st = getDBConnection()->prepare("SELECT first_called_at FROM queue_tickets
+                                      WHERE service_id = ? AND first_called_at IS NOT NULL AND ticket_date >= ?
+                                      ORDER BY first_called_at DESC LIMIT 21");
+    $st->execute([$serviceId, date('Y-m-d', strtotime('-14 days'))]);
+    $times = array_map('strtotime', $st->fetchAll(PDO::FETCH_COLUMN));
+    $gaps = [];
+    for ($i = 1; $i < count($times); $i++) {
+        $g = $times[$i - 1] - $times[$i];
+        if ($g > 0 && $g <= 1800 && date('Y-m-d', $times[$i - 1]) === date('Y-m-d', $times[$i])) {
+            $gaps[] = $g;
+        }
+    }
+    if (count($gaps) < 3) {
+        return null;
+    }
+    sort($gaps);
+    $mid = intdiv(count($gaps), 2);
+    $pace = count($gaps) % 2 ? $gaps[$mid] : ($gaps[$mid - 1] + $gaps[$mid]) / 2;
+    return max(1, (int) ceil(($ahead + ($serving ? 0.5 : 0)) * $pace / 60));
+}
+
+/** "Attesa stimata: circa 12 min" for the ticket and the totem; '' when there is no estimate. */
+function queueWaitText(?int $minutes): string
+{
+    if (!$minutes) {
+        return '';
+    }
+    $t = $minutes < 60 ? "$minutes min" : intdiv($minutes, 60) . ' h' . ($minutes % 60 ? ' ' . ($minutes % 60) . ' min' : '');
+    return 'Attesa stimata: circa ' . $t;
+}
+
+/** Seconds → "12 min", "1 h 05 min", "< 1 min" (statistics). */
+function queueDuration(?float $seconds): string
+{
+    if ($seconds === null) {
+        return '—';
+    }
+    $m = (int) round($seconds / 60);
+    if ($m < 1) {
+        return '< 1 min';
+    }
+    return $m < 60 ? "$m min" : intdiv($m, 60) . ' h ' . str_pad((string) ($m % 60), 2, '0', STR_PAD_LEFT) . ' min';
 }
 
 /**
@@ -152,11 +217,12 @@ function queueCall(int $serviceId, $pick, ?int $userId): ?array
             $pdo->rollBack();
             return null;
         }
+        $cols = "id, number, created_at, first_called_at";
         if ($pick === 'next') {
-            $st = $pdo->prepare("SELECT id, number FROM queue_tickets WHERE service_id = ? AND ticket_date = ? AND status = 'waiting' ORDER BY number LIMIT 1");
+            $st = $pdo->prepare("SELECT $cols FROM queue_tickets WHERE service_id = ? AND ticket_date = ? AND status = 'waiting' ORDER BY number LIMIT 1");
             $st->execute([$serviceId, $today]);
         } else {
-            $st = $pdo->prepare("SELECT id, number FROM queue_tickets WHERE service_id = ? AND ticket_date = ? AND number = ?");
+            $st = $pdo->prepare("SELECT $cols FROM queue_tickets WHERE service_id = ? AND ticket_date = ? AND number = ?");
             $st->execute([$serviceId, $today, (int) $pick]);
         }
         $t = $st->fetch();
@@ -164,10 +230,19 @@ function queueCall(int $serviceId, $pick, ?int $userId): ?array
             $pdo->rollBack();
             return null;
         }
+        $now = date('Y-m-d H:i:s');
         $pdo->prepare("UPDATE queue_tickets SET status = 'served' WHERE service_id = ? AND ticket_date = ? AND status = 'called' AND id <> ?")
             ->execute([$serviceId, $today, $t['id']]);
-        $pdo->prepare("UPDATE queue_tickets SET status = 'called', called_at = ?, call_count = call_count + 1, called_by = ? WHERE id = ?")
-            ->execute([date('Y-m-d H:i:s'), $userId, $t['id']]);
+        $pdo->prepare("UPDATE queue_tickets SET status = 'called', called_at = ?, first_called_at = COALESCE(first_called_at, ?),
+                       call_count = call_count + 1, called_by = ? WHERE id = ?")
+            ->execute([$now, $now, $userId, $t['id']]);
+        // First call: its waiting time goes into the day's statistics (they survive the resets).
+        $wait = strtotime($now) - strtotime((string) $t['created_at']);
+        if ($t['first_called_at'] === null && $wait >= 0 && $wait <= QUEUE_WAIT_MAX) {
+            $pdo->prepare("INSERT INTO queue_daily_counts (count_date, service_id, tickets, wait_seconds, waited) VALUES (?, ?, 0, ?, 1)
+                           ON DUPLICATE KEY UPDATE wait_seconds = wait_seconds + VALUES(wait_seconds), waited = waited + 1")
+                ->execute([$today, $serviceId, $wait]);
+        }
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack();
@@ -228,7 +303,8 @@ function queuePrev(int $serviceId, ?int $userId): ?array
         }
         $pdo->prepare("UPDATE queue_tickets SET status = 'waiting' WHERE service_id = ? AND ticket_date = ? AND status = 'called'")
             ->execute([$serviceId, $today]);
-        $pdo->prepare("UPDATE queue_tickets SET status = 'called', called_at = ?, call_count = call_count + 1, called_by = ? WHERE id = ?")
+        $pdo->prepare("UPDATE queue_tickets SET status = 'called', called_at = ?, first_called_at = COALESCE(first_called_at, called_at),
+                       call_count = call_count + 1, called_by = ? WHERE id = ?")
             ->execute([date('Y-m-d H:i:s'), $userId, $t['id']]);
         $pdo->commit();
     } catch (Throwable $e) {
@@ -344,7 +420,8 @@ function queuePrintTicket(array $ticket): array
         'brand'   => trim((string) $cfg['ticket_header']) ?: appName(),
         'service' => $ticket['service'],
         'number'  => $ticket['label'],
-        'ahead'   => $ticket['ahead'] > 0 ? 'Persone prima di te: ' . $ticket['ahead'] : '',
+        'ahead'   => $ticket['ahead_text'] ?? '',
+        'wait'    => $ticket['wait_text'] ?? '',
         'time'    => $ticket['time'],
         'footer'  => (string) $cfg['ticket_footer'],
     ]);
