@@ -65,6 +65,7 @@ $navLink     = static fn(string $href, string $icon, string $label) =>
         <?php if ($inAdmin): ?>
         <aside class="admin-sidebar">
             <?= $navLink('/admin/index.php', 'fa-ticket', 'Eliminacode') ?>
+            <?= $navLink('/admin/printer.php', 'fa-print', 'Stampante') ?>
             <?= $navLink('/admin/stats.php', 'fa-chart-column', 'Statistiche') ?>
             <?= $navLink('/admin/users.php', 'fa-users', 'Utenti') ?>
             <?= $navLink('/admin/activity.php', 'fa-history', 'Registro attività') ?>

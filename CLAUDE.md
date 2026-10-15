@@ -29,7 +29,9 @@ at the user's request. Integrating it into other projects is a later decision of
   runs `bin/monitor-kiosk.sh` (Chrome .deb `--kiosk` inside `cage`, user `monitor`, tty1, sound via pipewire)
   on http://localhost/queue/monitor.php. Waits until a screen is plugged in. Set up once with
   `bin/install-kiosk.sh` (also masks standby/hibernate); LAN server only. Reload the screen: `systemctl restart eliminacode-kiosk`.
-- `admin/index.php` (Eliminacode admin), `admin/users.php`, `admin/activity.php`.
+- `admin/index.php` (Eliminacode admin), `admin/printer.php` (Stampante: the totem's non-fiscal ESC/POS printer,
+  `printer_*` in settings.queue, connection check + test ticket; production uses pub's kitchen printer
+  192.168.8.159 through the WireGuard route), `admin/users.php`, `admin/activity.php`.
 - Monitor tiles (`queue_slides`) take a photo or a video (`video_path`, MP4/WebM/MOV up to
   `QUEUE_VIDEO_MAX_MB` = 200, limits raised in `.htaccess`). The monitor downloads each video in full as a blob
   before showing it, plays it to the end, then moves on; `video_audio` = its own sound, muted during a call.

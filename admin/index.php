@@ -3,7 +3,7 @@
  * Admin: Eliminacode (includes/queue.php) — the app's main admin page.
  * Links for the totem / monitor / operator page, the services customers pick
  * on the totem, the product tiles shown on the monitor, weather city, news
- * feed and the totem's network ticket printer.
+ * feed (the ticket printer has its own page, admin/printer.php).
  */
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/queue.php';
@@ -133,24 +133,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cfg['ticket_header'] = mb_substr(trim((string) ($_POST['ticket_header'] ?? '')), 0, 40);
         $cfg['ticket_footer'] = mb_substr(trim((string) ($_POST['ticket_footer'] ?? '')), 0, 200);
         $cfg['slide_seconds'] = max(3, min(120, (int) ($_POST['slide_seconds'] ?? 8)));
-        $cfg['printer_host']  = preg_replace('/[^A-Za-z0-9.\-:]/', '', (string) ($_POST['printer_host'] ?? ''));
-        $cfg['printer_port']  = max(1, min(65535, (int) ($_POST['printer_port'] ?? 9100)));
-        $cfg['printer_width'] = max(24, min(64, (int) ($_POST['printer_width'] ?? 48)));
-        $cfg['printer_codepage'] = max(0, min(255, (int) ($_POST['printer_codepage'] ?? 2)));
         setSetting('queue', $cfg);
         logActivity('queue_settings_updated', 'settings', null, null);
         $back($msg, 'settings');
-    }
-
-    if ($action === 'test_printer') {
-        [, $msg] = queuePrinterCheck();
-        $back($msg, 'settings');
-    }
-
-    if ($action === 'test_print') {
-        $res = queuePrintTicket(['id' => 0, 'service' => 'Prova stampa', 'label' => 'A000', 'ahead_text' => 'In coda prima di te: 3',
-                                 'wait_text' => queueWaitText(12), 'time' => date('d/m/Y H:i')]);
-        $back($res['ok'] ? 'Biglietto di prova inviato alla stampante.' : 'Stampa non riuscita: ' . $res['error'], 'settings');
     }
 
     if ($action === 'new_key') {
@@ -681,19 +666,7 @@ document.querySelectorAll('form.qa-upload').forEach(form => form.addEventListene
         </div>
         <div class="form-group"><label class="form-label">Messaggio in fondo al biglietto</label><textarea name="ticket_footer" maxlength="200" rows="2" class="form-control"><?= $v($cfg['ticket_footer']) ?></textarea></div>
 
-        <h3 style="font-size:1rem" class="mt-lg">Stampante termica del totem (non fiscale, ESC/POS)</h3>
-        <p class="qa-note">Il totem stampa il biglietto su questa stampante di rete (porta 9100, come le stampanti non fiscali del gestionale). Il server la raggiunge anche tramite la VPN del locale.
-            Se lasci vuoto l'indirizzo, o la stampante non risponde, il totem stampa il biglietto dal browser del tablet.</p>
-        <div class="form-row">
-            <div class="form-group"><label class="form-label">Indirizzo IP</label><input type="text" name="printer_host" class="form-control" value="<?= $v($cfg['printer_host']) ?>" placeholder="192.168.1.50"></div>
-            <div class="form-group" style="max-width:120px"><label class="form-label">Porta</label><input type="number" name="printer_port" class="form-control" value="<?= (int) $cfg['printer_port'] ?>"></div>
-            <div class="form-group" style="max-width:190px"><label class="form-label">Caratteri per riga</label>
-                <input type="number" name="printer_width" min="24" max="64" class="form-control" value="<?= (int) $cfg['printer_width'] ?>" list="qa-widths">
-                <datalist id="qa-widths"><option value="48">80 mm</option><option value="42">80 mm</option><option value="32">58 mm</option></datalist></div>
-            <div class="form-group" style="max-width:150px"><label class="form-label">Codepage</label>
-                <input type="number" name="printer_codepage" min="0" max="255" class="form-control" value="<?= (int) $cfg['printer_codepage'] ?>" title="2 = PC850 (lettere accentate), 0 = PC437"></div>
-        </div>
-        <p class="qa-note" style="margin-top:-4px">Carta 80 mm: 48 caratteri (o 42), carta 58 mm: 32. Codepage 2 = lettere accentate (PC850), come nel gestionale.</p>
+        <p class="qa-note">La stampante dei biglietti si imposta in <a href="/admin/printer.php"><i class="fas fa-print"></i> Stampante</a>.</p>
 
         <h3 style="font-size:1rem" class="mt-lg">Monitor</h3>
         <div class="form-row">
@@ -713,14 +686,6 @@ document.querySelectorAll('form.qa-upload').forEach(form => form.addEventListene
         </div>
         <button class="btn btn-primary"><i class="fas fa-save"></i> Salva</button>
     </form>
-    <?php if (trim((string) $cfg['printer_host']) !== ''): ?>
-        <div class="card-body" style="padding-top:0;display:flex;gap:8px;flex-wrap:wrap">
-            <form method="POST"><input type="hidden" name="action" value="test_printer">
-                <button class="btn btn-outline"><i class="fas fa-plug"></i> Verifica collegamento</button></form>
-            <form method="POST"><input type="hidden" name="action" value="test_print">
-                <button class="btn btn-outline"><i class="fas fa-print"></i> Stampa un biglietto di prova</button></form>
-        </div>
-    <?php endif; ?>
 </div>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>
