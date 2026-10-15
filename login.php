@@ -47,6 +47,7 @@ $logo = brandLogoUrl();
                 <img class="login-logo-img" src="<?= h($logo) ?>" alt="<?= h(appName()) ?>">
             <?php else: ?>
                 <img class="login-brand" src="/assets/brand/upgrade-logo.png" alt="Upgrade" width="220" height="72">
+                <small class="powered-contact" style="display:block;margin-top:4px;font-size:.8rem">Upgrade srls : 3288054977</small>
                 <h1><?= h(appName()) ?></h1>
             <?php endif; ?>
             <p class="text-muted">Sistema eliminacode</p>
